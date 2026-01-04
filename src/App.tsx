@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, ShieldAlert, ShieldCheck, Navigation, Info, ExternalLink, Menu, X } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
 import { SearchInput } from './components/SearchInput';
 import { Map } from './components/Map';
 import type { GeocodeResult } from './services/nominatim';
@@ -175,6 +176,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen bg-gray-950 text-white overflow-hidden relative font-sans">
+      <Analytics />
       {/* Mobile Header */}
       <div className="absolute top-0 left-0 right-0 z-40 p-4 flex justify-between items-center md:hidden bg-gray-900/80 backdrop-blur-md">
         <div className="flex items-center gap-2">
