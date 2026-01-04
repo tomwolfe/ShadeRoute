@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+/* Leaflet container needs height */
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+}
