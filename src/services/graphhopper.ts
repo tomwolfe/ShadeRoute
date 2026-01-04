@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { Camera } from './overpass';
 
 export interface RouteResponse {
   paths: Array<{
@@ -21,19 +22,23 @@ export type StealthMode = 'speed' | 'balanced' | 'stealth';
 export async function getRoute(
   start: [number, number],
   end: [number, number],
-  cameras: any[],
+  cameras: Camera[],
   mode: StealthMode,
   apiKey: string
 ): Promise<RouteResponse> {
   const features: any[] = [];
   const priorityStatements: any[] = [];
 
-  if (mode !== 'speed' && cameras.length > 0) {
+  // Limit cameras to avoid huge request bodies, but take up to 100
+  const relevantCameras = cameras.slice(0, 100);
+
+  if (mode !== 'speed' && relevantCameras.length > 0) {
     const priorityFactor = mode === 'balanced' ? 0.1 : 0.01;
     
-    cameras.forEach((cam, index) => {
+    relevantCameras.forEach((cam, index) => {
       const areaId = `camera_${index}`;
-      const offset = 0.0006;
+      // Increase offset slightly to 0.0008 (~80-90m) for better avoidance coverage
+      const offset = 0.0008;
       
       features.push({
         type: 'Feature',
@@ -59,8 +64,22 @@ export async function getRoute(
   }
 
   if (mode === 'stealth') {
+    // Aggressively penalize major roads where ALPRs are most likely but maybe not tagged
     priorityStatements.push({
-      if: "road_class == TRUNK || road_class == PRIMARY",
+      if: "road_class == MOTORWAY || road_class == TRUNK",
+      multiply_by: 0.1
+    });
+    priorityStatements.push({
+      if: "road_class == PRIMARY",
+      multiply_by: 0.3
+    });
+    priorityStatements.push({
+      if: "road_class == SECONDARY",
+      multiply_by: 0.7
+    });
+  } else if (mode === 'balanced') {
+    priorityStatements.push({
+      if: "road_class == MOTORWAY || road_class == TRUNK",
       multiply_by: 0.5
     });
   }

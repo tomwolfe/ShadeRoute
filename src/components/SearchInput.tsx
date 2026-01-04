@@ -7,16 +7,21 @@ interface SearchInputProps {
   placeholder: string;
   onSelect: (result: GeocodeResult) => void;
   label: string;
+  value?: string;
 }
 
-export const SearchInput: React.FC<SearchInputProps> = ({ placeholder, onSelect, label }) => {
-  const [query, setQuery] = useState('');
+export const SearchInput: React.FC<SearchInputProps> = ({ placeholder, onSelect, label, value = '' }) => {
+  const [query, setQuery] = useState(value);
   const [results, setResults] = useState<GeocodeResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const timeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (query.length < 3) {
+    setQuery(value);
+  }, [value]);
+
+  useEffect(() => {
+    if (query.length < 3 || query === value) {
       setResults([]);
       return;
     }

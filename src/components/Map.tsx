@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, CircleMarker } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, CircleMarker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import type { Camera } from '../services/overpass';
 
@@ -23,11 +23,19 @@ interface MapProps {
   route: [number, number][] | null;
   startPoint: [number, number] | null;
   endPoint: [number, number] | null;
+  onMapClick?: (lat: number, lon: number) => void;
 }
 
-function ChangeView({ center, zoom, route, startPoint, endPoint }: { 
-  center: [number, number], 
-  zoom: number, 
+function ClickHandler({ onClick }: { onClick?: (lat: number, lon: number) => void }) {
+  useMapEvents({
+    click(e) {
+      onClick?.(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
+
+function ChangeView({ route, startPoint, endPoint }: { 
   route: [number, number][] | null,
   startPoint: [number, number] | null,
   endPoint: [number, number] | null
@@ -44,14 +52,12 @@ function ChangeView({ center, zoom, route, startPoint, endPoint }: {
       map.setView(startPoint, 13);
     } else if (endPoint) {
       map.setView(endPoint, 13);
-    } else {
-      map.setView(center, zoom);
     }
-  }, [center, zoom, route, startPoint, endPoint, map]);
+  }, [route, startPoint, endPoint, map]);
   return null;
 }
 
-export const Map: React.FC<MapProps> = ({ center, zoom, cameras, route, startPoint, endPoint }) => {
+export const Map: React.FC<MapProps> = ({ center, zoom, cameras, route, startPoint, endPoint, onMapClick }) => {
   return (
     <div className="h-full w-full">
       <MapContainer center={center} zoom={zoom} scrollWheelZoom={true} className="h-full w-full">
@@ -59,9 +65,8 @@ export const Map: React.FC<MapProps> = ({ center, zoom, cameras, route, startPoi
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+        <ClickHandler onClick={onMapClick} />
         <ChangeView 
-          center={center} 
-          zoom={zoom} 
           route={route} 
           startPoint={startPoint} 
           endPoint={endPoint} 
@@ -80,18 +85,27 @@ export const Map: React.FC<MapProps> = ({ center, zoom, cameras, route, startPoi
             }}
           >
             <Popup>
-              <div className="text-xs">
+              <div className="text-xs text-gray-900">
                 <p className="font-bold">Surveillance Camera</p>
                 {camera.tags['surveillance:type'] && <p>Type: {camera.tags['surveillance:type']}</p>}
                 {camera.tags.brand && <p>Brand: {camera.tags.brand}</p>}
                 {camera.tags.name && <p>Name: {camera.tags.name}</p>}
+                <p className="mt-1 text-[10px] text-gray-500">ID: {camera.id}</p>
               </div>
             </Popup>
           </CircleMarker>
         ))}
 
-        {startPoint && <Marker position={startPoint} />}
-        {endPoint && <Marker position={endPoint} />}
+        {startPoint && (
+          <Marker position={startPoint}>
+            <Popup>Start Location</Popup>
+          </Marker>
+        )}
+        {endPoint && (
+          <Marker position={endPoint}>
+            <Popup>Destination</Popup>
+          </Marker>
+        )}
 
         {route && (
           <Polyline 

@@ -3,12 +3,14 @@ import { Shield, ShieldAlert, ShieldCheck, Navigation, Info, ExternalLink, Menu,
 import { SearchInput } from './components/SearchInput';
 import { Map } from './components/Map';
 import type { GeocodeResult } from './services/nominatim';
+import { reverseGeocode } from './services/nominatim';
 import { fetchCameras } from './services/overpass';
 import type { Camera } from './services/overpass';
 import { getRoute } from './services/graphhopper';
 import type { StealthMode, RouteResponse } from './services/graphhopper';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { calculateBBox, bboxToArray } from './utils';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -24,22 +26,24 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [apiKey, setApiKey] = useState(localStorage.getItem('gh_api_key') || '');
+  const lastFetchedBBox = React.useRef<string>('');
 
   useEffect(() => {
     const autoFetchCameras = async () => {
       if (start && end) {
-        const sLat = parseFloat(start.lat);
-        const sLon = parseFloat(start.lon);
-        const eLat = parseFloat(end.lat);
-        const eLon = parseFloat(end.lon);
+        const bbox = calculateBBox(
+          parseFloat(start.lat),
+          parseFloat(start.lon),
+          parseFloat(end.lat),
+          parseFloat(end.lon)
+        );
+        const bboxString = JSON.stringify(bbox);
         
-        const south = Math.min(sLat, eLat) - 0.05;
-        const north = Math.max(sLat, eLat) + 0.05;
-        const west = Math.min(sLon, eLon) - 0.05;
-        const east = Math.max(sLon, eLon) + 0.05;
+        if (bboxString === lastFetchedBBox.current) return;
+        lastFetchedBBox.current = bboxString;
 
         try {
-          const fetched = await fetchCameras([south, west, north, east]);
+          const fetched = await fetchCameras(bboxToArray(bbox));
           setCameras(fetched);
         } catch (err) {
           console.error('Auto-fetch cameras failed:', err);
@@ -66,21 +70,19 @@ const App: React.FC = () => {
       const eLat = parseFloat(end.lat);
       const eLon = parseFloat(end.lon);
       
-      const south = Math.min(sLat, eLat) - 0.05;
-      const north = Math.max(sLat, eLat) + 0.05;
-      const west = Math.min(sLon, eLon) - 0.05;
-      const east = Math.max(sLon, eLon) + 0.05;
-
-      console.log('Fetching cameras from Overpass...');
-      const fetchedCameras = await fetchCameras([south, west, north, east]);
-      console.log(`Fetched ${fetchedCameras.length} cameras.`);
-      setCameras(fetchedCameras);
+      let currentCameras = cameras;
+      if (currentCameras.length === 0) {
+        const bbox = calculateBBox(sLat, sLon, eLat, eLon);
+        console.log('Fetching cameras from Overpass (fallback)...');
+        currentCameras = await fetchCameras(bboxToArray(bbox));
+        setCameras(currentCameras);
+      }
 
       console.log('Requesting route from GraphHopper with mode:', mode);
       const response: RouteResponse = await getRoute(
         [sLat, sLon],
         [eLat, eLon],
-        fetchedCameras.slice(0, 50), // Limit to 50 cameras to avoid exceeding area limits
+        currentCameras,
         mode,
         apiKey
       );
@@ -107,6 +109,17 @@ const App: React.FC = () => {
   const formatDistance = (m: number) => (m / 1609.34).toFixed(1) + ' miles';
   const formatTime = (ms: number) => Math.round(ms / 60000) + ' min';
 
+  const handleMapClick = async (lat: number, lon: number) => {
+    const result = await reverseGeocode(lat, lon);
+    if (result) {
+      if (!start) {
+        setStart(result);
+      } else {
+        setEnd(result);
+      }
+    }
+  };
+
   return (
     <div className="flex h-screen w-screen bg-gray-950 text-white overflow-hidden relative font-sans">
       {/* Mobile Header */}
@@ -132,16 +145,38 @@ const App: React.FC = () => {
           </div>
 
           <div className="space-y-6">
-            <SearchInput 
-              label="START LOCATION"
-              placeholder="Enter start address..." 
-              onSelect={setStart} 
-            />
-            <SearchInput 
-              label="DESTINATION"
-              placeholder="Enter destination..." 
-              onSelect={setEnd} 
-            />
+            <div className="relative group">
+              <SearchInput 
+                label="START LOCATION"
+                placeholder="Enter start address..." 
+                onSelect={setStart}
+                value={start?.display_name || ''}
+              />
+              {start && (
+                <button 
+                  onClick={() => { setStart(null); setRoute(null); setRouteInfo(null); }}
+                  className="absolute right-2 top-7 p-1 text-gray-500 hover:text-white transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <div className="relative group">
+              <SearchInput 
+                label="DESTINATION"
+                placeholder="Enter destination..." 
+                onSelect={setEnd}
+                value={end?.display_name || ''}
+              />
+              {end && (
+                <button 
+                  onClick={() => { setEnd(null); setRoute(null); setRouteInfo(null); }}
+                  className="absolute right-2 top-7 p-1 text-gray-500 hover:text-white transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
 
             <div className="space-y-1">
               <label className="block text-xs font-medium text-gray-400 ml-1 uppercase">GraphHopper API Key</label>
@@ -199,18 +234,22 @@ const App: React.FC = () => {
             </button>
 
             {routeInfo && (
-              <div className="bg-blue-950/30 border border-blue-900/50 rounded-xl p-4 space-y-2 animate-in fade-in slide-in-from-bottom-2">
-                <div className="flex justify-between items-center text-sm">
+              <div className="bg-blue-950/30 border border-blue-900/50 rounded-xl p-4 space-y-3 animate-in fade-in slide-in-from-bottom-2">
+                <div className="flex justify-between items-center text-sm border-b border-blue-900/30 pb-2">
                   <span className="text-blue-300 font-medium">Distance</span>
                   <span className="text-white font-bold">{formatDistance(routeInfo.distance)}</span>
                 </div>
-                <div className="flex justify-between items-center text-sm">
+                <div className="flex justify-between items-center text-sm border-b border-blue-900/30 pb-2">
                   <span className="text-blue-300 font-medium">Est. Time</span>
                   <span className="text-white font-bold">{formatTime(routeInfo.time)}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
-                  <span className="text-blue-300 font-medium">Cameras Avoided</span>
+                  <span className="text-blue-300 font-medium">Cameras in Area</span>
                   <span className="text-white font-bold">{cameras.length} spotted</span>
+                </div>
+                <div className="mt-2 pt-2 bg-blue-500/10 rounded-lg p-2 text-[10px] text-blue-200 flex items-center gap-2">
+                  <ShieldCheck size={14} className="text-blue-400" />
+                  Route optimized to avoid detection.
                 </div>
               </div>
             )}
@@ -245,6 +284,7 @@ const App: React.FC = () => {
           route={route}
           startPoint={start ? [parseFloat(start.lat), parseFloat(start.lon)] : null}
           endPoint={end ? [parseFloat(end.lat), parseFloat(end.lon)] : null}
+          onMapClick={handleMapClick}
         />
       </div>
     </div>
