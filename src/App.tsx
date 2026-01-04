@@ -7,6 +7,7 @@ import { reverseGeocode } from './services/nominatim';
 import { fetchCameras } from './services/overpass';
 import type { Camera } from './services/overpass';
 import { getRoute } from './services/graphhopper';
+import { getORSRoute } from './services/openrouteservice';
 import type { StealthMode, RouteResponse } from './services/graphhopper';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -15,6 +16,8 @@ import { calculateBBox, bboxToArray } from './utils';
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+type RoutingEngine = 'graphhopper' | 'openrouteservice';
 
 const App: React.FC = () => {
   const [start, setStart] = useState<GeocodeResult | null>(null);
@@ -25,7 +28,9 @@ const App: React.FC = () => {
   const [routeInfo, setRouteInfo] = useState<{ distance: number; time: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [apiKey, setApiKey] = useState(localStorage.getItem('gh_api_key') || '');
+  const [ghApiKey, setGhApiKey] = useState(localStorage.getItem('gh_api_key') || '');
+  const [orsApiKey, setOrsApiKey] = useState(localStorage.getItem('ors_api_key') || '');
+  const [engine, setEngine] = useState<RoutingEngine>((localStorage.getItem('routing_engine') as RoutingEngine) || 'graphhopper');
   const lastFetchedBBox = React.useRef<string>('');
 
   useEffect(() => {
@@ -55,16 +60,23 @@ const App: React.FC = () => {
 
   const handleRoute = async () => {
     if (!start || !end) return;
-    if (!apiKey) {
-      alert('Please enter a GraphHopper API Key in the settings.');
+    
+    if (engine === 'graphhopper' && !ghApiKey) {
+      alert('Please enter a GraphHopper API Key.');
+      return;
+    }
+    if (engine === 'openrouteservice' && !orsApiKey) {
+      alert('Please enter an OpenRouteService API Key.');
       return;
     }
     
-    localStorage.setItem('gh_api_key', apiKey);
+    localStorage.setItem('gh_api_key', ghApiKey);
+    localStorage.setItem('ors_api_key', orsApiKey);
+    localStorage.setItem('routing_engine', engine);
 
     setLoading(true);
     try {
-      console.log('Starting route calculation...');
+      console.log(`Starting route calculation using ${engine}...`);
       const sLat = parseFloat(start.lat);
       const sLon = parseFloat(start.lon);
       const eLat = parseFloat(end.lat);
@@ -73,33 +85,50 @@ const App: React.FC = () => {
       let currentCameras = cameras;
       if (currentCameras.length === 0) {
         const bbox = calculateBBox(sLat, sLon, eLat, eLon);
-        console.log('Fetching cameras from Overpass (fallback)...');
         currentCameras = await fetchCameras(bboxToArray(bbox));
         setCameras(currentCameras);
       }
 
-      console.log('Requesting route from GraphHopper with mode:', mode);
-      const response: RouteResponse = await getRoute(
-        [sLat, sLon],
-        [eLat, eLon],
-        currentCameras,
-        mode,
-        apiKey
-      );
-      console.log('GraphHopper response received:', response);
+      if (engine === 'graphhopper') {
+        const response: RouteResponse = await getRoute(
+          [sLat, sLon],
+          [eLat, eLon],
+          currentCameras,
+          mode,
+          ghApiKey
+        );
 
-      if (response.paths && response.paths.length > 0) {
-        const path = response.paths[0];
-        const coords = path.points.coordinates.map(c => [c[1], c[0]] as [number, number]);
-        setRoute(coords);
+        if (response.paths && response.paths.length > 0) {
+          const path = response.paths[0];
+          const coords = path.points.coordinates.map(c => [c[1], c[0]] as [number, number]);
+          setRoute(coords);
+          setRouteInfo({
+            distance: path.distance,
+            time: path.time,
+          });
+        }
+      } else {
+        const result = await getORSRoute(
+          [sLat, sLon],
+          [eLat, eLon],
+          currentCameras,
+          mode,
+          orsApiKey
+        );
+        setRoute(result.coordinates);
         setRouteInfo({
-          distance: path.distance,
-          time: path.time,
+          distance: result.distance,
+          time: result.time,
         });
       }
     } catch (error: any) {
       console.error('Routing failed details:', error);
-      const message = error.response?.data?.message || error.message || 'Unknown error';
+      let message = error.response?.data?.message || error.message || 'Unknown error';
+      
+      if (engine === 'graphhopper' && message.includes('flexible mode')) {
+        message = "GraphHopper Free tier does not support 'Balanced' or 'Stealth' modes. Please use 'Speed' mode, upgrade your GraphHopper plan, or switch to OpenRouteService.";
+      }
+      
       alert(`Routing failed: ${message}`);
     } finally {
       setLoading(false);
@@ -178,18 +207,54 @@ const App: React.FC = () => {
               )}
             </div>
 
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-400 ml-1 uppercase">GraphHopper API Key</label>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Enter API Key..."
-                className="w-full bg-gray-800 text-white rounded-lg px-4 py-2 border border-gray-700 focus:outline-none focus:border-blue-500 transition-colors text-sm"
-              />
-              <p className="text-[10px] text-gray-500 px-1">
-                Required for routing. Get one at <a href="https://graphhopper.com/dashboard" target="_blank" className="text-blue-500 hover:underline">graphhopper.com</a>
-              </p>
+            <div className="space-y-4 bg-gray-800/50 p-4 rounded-xl border border-gray-700">
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">Routing Provider</label>
+              <div className="flex gap-2">
+                {(['graphhopper', 'openrouteservice'] as RoutingEngine[]).map((e) => (
+                  <button
+                    key={e}
+                    onClick={() => setEngine(e)}
+                    className={cn(
+                      "flex-1 py-2 px-1 rounded-lg text-[10px] font-bold uppercase transition-all border",
+                      engine === e 
+                        ? "bg-blue-600/20 border-blue-500 text-blue-400" 
+                        : "bg-gray-900 border-gray-700 text-gray-500 hover:text-gray-300"
+                    )}
+                  >
+                    {e === 'graphhopper' ? 'GraphHopper' : 'OpenRouteService'}
+                  </button>
+                ))}
+              </div>
+
+              {engine === 'graphhopper' ? (
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-medium text-gray-500 ml-1 uppercase">GraphHopper API Key</label>
+                  <input
+                    type="password"
+                    value={ghApiKey}
+                    onChange={(e) => setGhApiKey(e.target.value)}
+                    placeholder="Enter GH API Key..."
+                    className="w-full bg-gray-900 text-white rounded-lg px-3 py-2 border border-gray-700 focus:outline-none focus:border-blue-500 transition-colors text-xs"
+                  />
+                  <p className="text-[9px] text-gray-600 px-1">
+                    Free tier: 'Speed' mode only.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-medium text-gray-500 ml-1 uppercase">ORS API Key</label>
+                  <input
+                    type="password"
+                    value={orsApiKey}
+                    onChange={(e) => setOrsApiKey(e.target.value)}
+                    placeholder="Enter ORS API Key..."
+                    className="w-full bg-gray-900 text-white rounded-lg px-3 py-2 border border-gray-700 focus:outline-none focus:border-blue-500 transition-colors text-xs"
+                  />
+                  <p className="text-[9px] text-gray-600 px-1">
+                    Free tier supports all modes. Get at <a href="https://openrouteservice.org" target="_blank" className="text-blue-500 hover:underline">openrouteservice.org</a>
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="space-y-3">
