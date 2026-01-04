@@ -13,3 +13,8 @@
   height: 100%;
   width: 100%;
 }
+
+.custom-camera-icon {
+  background: none !important;
+  border: none !important;
+}

@@ -88,6 +88,7 @@ export async function getRoute(
       points_encoded: false,
       elevation: false,
       instructions: true,
+      'ch.disable': true,
       custom_model: priorityStatements.length > 0 ? customModel : undefined
     }
   );

@@ -18,10 +18,12 @@ L.Marker.prototype.options.icon = DefaultIcon;
 
 // Camera icon
 const cameraIcon = L.divIcon({
-  html: `<div class="bg-red-600 w-3 h-3 rounded-full border-2 border-white shadow-lg"></div>`,
+  html: `<div class="bg-red-500 w-4 h-4 rounded-full border-2 border-white shadow-[0_0_10px_rgba(239,68,68,0.5)] flex items-center justify-center">
+           <div class="bg-white w-1 h-1 rounded-full"></div>
+         </div>`,
   className: 'custom-camera-icon',
-  iconSize: [12, 12],
-  iconAnchor: [6, 6],
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
 });
 
 interface MapProps {
@@ -33,16 +35,29 @@ interface MapProps {
   endPoint: [number, number] | null;
 }
 
-function ChangeView({ center, zoom, route }: { center: [number, number], zoom: number, route: any }) {
+function ChangeView({ center, zoom, route, startPoint, endPoint }: { 
+  center: [number, number], 
+  zoom: number, 
+  route: [number, number][] | null,
+  startPoint: [number, number] | null,
+  endPoint: [number, number] | null
+}) {
   const map = useMap();
   React.useEffect(() => {
     if (route && route.length > 0) {
       const bounds = L.latLngBounds(route);
       map.fitBounds(bounds, { padding: [50, 50] });
+    } else if (startPoint && endPoint) {
+      const bounds = L.latLngBounds([startPoint, endPoint]);
+      map.fitBounds(bounds, { padding: [100, 100] });
+    } else if (startPoint) {
+      map.setView(startPoint, 13);
+    } else if (endPoint) {
+      map.setView(endPoint, 13);
     } else {
       map.setView(center, zoom);
     }
-  }, [center, zoom, route, map]);
+  }, [center, zoom, route, startPoint, endPoint, map]);
   return null;
 }
 
@@ -54,7 +69,13 @@ export const Map: React.FC<MapProps> = ({ center, zoom, cameras, route, startPoi
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <ChangeView center={center} zoom={zoom} route={route} />
+        <ChangeView 
+          center={center} 
+          zoom={zoom} 
+          route={route} 
+          startPoint={startPoint} 
+          endPoint={endPoint} 
+        />
         
         {cameras.map((camera) => (
           <Marker 

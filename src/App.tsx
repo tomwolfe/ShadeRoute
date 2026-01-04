@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Shield, ShieldAlert, ShieldCheck, Navigation, Info, ExternalLink, Menu, X } from 'lucide-react';
 import { SearchInput } from './components/SearchInput';
 import { Map } from './components/Map';
@@ -24,6 +24,30 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [apiKey, setApiKey] = useState(localStorage.getItem('gh_api_key') || '');
+
+  useEffect(() => {
+    const autoFetchCameras = async () => {
+      if (start && end) {
+        const sLat = parseFloat(start.lat);
+        const sLon = parseFloat(start.lon);
+        const eLat = parseFloat(end.lat);
+        const eLon = parseFloat(end.lon);
+        
+        const south = Math.min(sLat, eLat) - 0.05;
+        const north = Math.max(sLat, eLat) + 0.05;
+        const west = Math.min(sLon, eLon) - 0.05;
+        const east = Math.max(sLon, eLon) + 0.05;
+
+        try {
+          const fetched = await fetchCameras([south, west, north, east]);
+          setCameras(fetched);
+        } catch (err) {
+          console.error('Auto-fetch cameras failed:', err);
+        }
+      }
+    };
+    autoFetchCameras();
+  }, [start, end]);
 
   const handleRoute = async () => {
     if (!start || !end) return;

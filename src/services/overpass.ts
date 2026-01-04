@@ -17,7 +17,7 @@ export async function fetchCameras(bbox: [number, number, number, number]): Prom
   const [south, west, north, east] = bbox;
   
   // Limit bounding box size to avoid overwhelming Overpass
-  if (Math.abs(north - south) > 1 || Math.abs(east - west) > 1) {
+  if (Math.abs(north - south) > 5 || Math.abs(east - west) > 5) {
     console.warn('Bounding box too large, skipping camera fetch');
     return [];
   }
@@ -25,10 +25,9 @@ export async function fetchCameras(bbox: [number, number, number, number]): Prom
   const query = `
     [out:json][timeout:25];
     (
-      node["man_made"="surveillance"]["surveillance:type"="ALPR"](${south},${west},${north},${east});
-      node["man_made"="surveillance"]["surveillance:kind"="lpr"](${south},${west},${north},${east});
-      way["man_made"="surveillance"]["surveillance:type"="ALPR"](${south},${west},${north},${east});
-      way["man_made"="surveillance"]["surveillance:kind"="lpr"](${south},${west},${north},${east});
+      node["man_made"="surveillance"]["surveillance:type"~"ALPR|number_plate"](${south},${west},${north},${east});
+      node["man_made"="surveillance"]["surveillance:kind"~"lpr|alpr"](${south},${west},${north},${east});
+      node["camera:type"="alpr"](${south},${west},${north},${east});
     );
     out body center;
   `;
