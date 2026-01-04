@@ -25,18 +25,19 @@ export async function getRoute(
   mode: StealthMode,
   apiKey: string
 ): Promise<RouteResponse> {
-  const areas: any = {};
+  const features: any[] = [];
   const priorityStatements: any[] = [];
 
-  if (mode !== 'speed') {
-    // Balanced: priority 0.1 (10x cost), Stealth: priority 0.01 (100x cost)
-    const priorityFactor = mode === 'balanced' ? "0.1" : "0.01";
+  if (mode !== 'speed' && cameras.length > 0) {
+    const priorityFactor = mode === 'balanced' ? 0.1 : 0.01;
     
     cameras.forEach((cam, index) => {
       const areaId = `camera_${index}`;
-      const offset = 0.0006; // Approx 50-60m
-      areas[areaId] = {
+      const offset = 0.0006;
+      
+      features.push({
         type: 'Feature',
+        id: areaId,
         geometry: {
           type: 'Polygon',
           coordinates: [[
@@ -46,28 +47,34 @@ export async function getRoute(
             [cam.lon - offset, cam.lat + offset],
             [cam.lon - offset, cam.lat - offset]
           ]]
-        }
-      };
+        },
+        properties: {}
+      });
 
       priorityStatements.push({
         if: `in_${areaId}`,
         multiply_by: priorityFactor
       });
     });
-
-    if (mode === 'stealth') {
-      // Also penalize major roads generally
-      priorityStatements.push({
-        if: "road_class == TRUNK || road_class == PRIMARY",
-        multiply_by: "0.5"
-      });
-    }
   }
 
-  const customModel = {
-    priority: priorityStatements,
-    areas: areas
+  if (mode === 'stealth') {
+    priorityStatements.push({
+      if: "road_class == TRUNK || road_class == PRIMARY",
+      multiply_by: 0.5
+    });
+  }
+
+  const customModel: any = {
+    priority: priorityStatements
   };
+
+  if (features.length > 0) {
+    customModel.areas = {
+      type: 'FeatureCollection',
+      features: features
+    };
+  }
 
   const response = await axios.post(
     `https://graphhopper.com/api/1/route?key=${apiKey}`,
@@ -81,7 +88,7 @@ export async function getRoute(
       points_encoded: false,
       elevation: false,
       instructions: true,
-      custom_model: mode === 'speed' ? undefined : customModel
+      custom_model: priorityStatements.length > 0 ? customModel : undefined
     }
   );
 

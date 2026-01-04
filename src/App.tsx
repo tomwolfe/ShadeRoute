@@ -36,7 +36,7 @@ const App: React.FC = () => {
 
     setLoading(true);
     try {
-      // 1. Calculate bounding box for initial camera fetch
+      console.log('Starting route calculation...');
       const sLat = parseFloat(start.lat);
       const sLon = parseFloat(start.lon);
       const eLat = parseFloat(end.lat);
@@ -47,21 +47,23 @@ const App: React.FC = () => {
       const west = Math.min(sLon, eLon) - 0.05;
       const east = Math.max(sLon, eLon) + 0.05;
 
+      console.log('Fetching cameras from Overpass...');
       const fetchedCameras = await fetchCameras([south, west, north, east]);
+      console.log(`Fetched ${fetchedCameras.length} cameras.`);
       setCameras(fetchedCameras);
 
-      // 2. Get route from GraphHopper
+      console.log('Requesting route from GraphHopper with mode:', mode);
       const response: RouteResponse = await getRoute(
         [sLat, sLon],
         [eLat, eLon],
-        fetchedCameras,
+        fetchedCameras.slice(0, 50), // Limit to 50 cameras to avoid exceeding area limits
         mode,
         apiKey
       );
+      console.log('GraphHopper response received:', response);
 
       if (response.paths && response.paths.length > 0) {
         const path = response.paths[0];
-        // GH returns [lon, lat], Leaflet wants [lat, lon]
         const coords = path.points.coordinates.map(c => [c[1], c[0]] as [number, number]);
         setRoute(coords);
         setRouteInfo({
@@ -69,9 +71,10 @@ const App: React.FC = () => {
           time: path.time,
         });
       }
-    } catch (error) {
-      console.error('Routing failed:', error);
-      alert('Routing failed. Please check your API key and connection.');
+    } catch (error: any) {
+      console.error('Routing failed details:', error);
+      const message = error.response?.data?.message || error.message || 'Unknown error';
+      alert(`Routing failed: ${message}`);
     } finally {
       setLoading(false);
     }
