@@ -12,6 +12,7 @@ import type { StealthMode, RouteResponse } from './services/graphhopper';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { calculateBBox, bboxToArray } from './utils';
+import { getStoredApiKeys, storeApiKeys } from './services/apiKeys';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -28,10 +29,12 @@ const App: React.FC = () => {
   const [routeInfo, setRouteInfo] = useState<{ distance: number; time: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [ghApiKey, setGhApiKey] = useState(localStorage.getItem('gh_api_key') || '');
-  const [orsApiKey, setOrsApiKey] = useState(localStorage.getItem('ors_api_key') || '');
-  const [engine, setEngine] = useState<RoutingEngine>((localStorage.getItem('routing_engine') as RoutingEngine) || 'graphhopper');
+  const storedKeys = getStoredApiKeys();
+  const [ghApiKey, setGhApiKey] = useState(storedKeys.gh_api_key || '');
+  const [orsApiKey, setOrsApiKey] = useState(storedKeys.ors_api_key || '');
+  const [engine, setEngine] = useState<RoutingEngine>(storedKeys.routing_engine || 'graphhopper');
   const lastFetchedBBox = React.useRef<string>('');
+  const lastFetchedCameras = React.useRef<Camera[]>([]);
 
   useEffect(() => {
     const autoFetchCameras = async () => {
@@ -43,19 +46,23 @@ const App: React.FC = () => {
           parseFloat(end.lon)
         );
         const bboxString = JSON.stringify(bbox);
-        
+
         if (bboxString === lastFetchedBBox.current) return;
         lastFetchedBBox.current = bboxString;
 
         try {
           const fetched = await fetchCameras(bboxToArray(bbox));
           setCameras(fetched);
+          lastFetchedCameras.current = fetched; // Cache the fetched cameras
         } catch (err) {
           console.error('Auto-fetch cameras failed:', err);
         }
       }
     };
-    autoFetchCameras();
+
+    // Debounce the camera fetching to avoid too many requests
+    const timer = setTimeout(autoFetchCameras, 300);
+    return () => clearTimeout(timer);
   }, [start, end]);
 
   const handleRoute = async () => {
@@ -70,9 +77,11 @@ const App: React.FC = () => {
       return;
     }
     
-    localStorage.setItem('gh_api_key', ghApiKey);
-    localStorage.setItem('ors_api_key', orsApiKey);
-    localStorage.setItem('routing_engine', engine);
+    storeApiKeys({
+      gh_api_key: ghApiKey,
+      ors_api_key: orsApiKey,
+      routing_engine: engine
+    });
 
     setLoading(true);
     try {
@@ -81,12 +90,14 @@ const App: React.FC = () => {
       const sLon = parseFloat(start.lon);
       const eLat = parseFloat(end.lat);
       const eLon = parseFloat(end.lon);
-      
-      let currentCameras = cameras;
+
+      // Use cached cameras if available, otherwise fetch new ones
+      let currentCameras = cameras.length > 0 ? cameras : lastFetchedCameras.current;
       if (currentCameras.length === 0) {
         const bbox = calculateBBox(sLat, sLon, eLat, eLon);
         currentCameras = await fetchCameras(bboxToArray(bbox));
         setCameras(currentCameras);
+        lastFetchedCameras.current = currentCameras; // Update cache
       }
 
       if (engine === 'graphhopper') {
@@ -121,14 +132,27 @@ const App: React.FC = () => {
           time: result.time,
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Routing failed details:', error);
-      let message = error.response?.data?.message || error.message || 'Unknown error';
-      
+
+      // Type guard to check if error is an Axios error
+      let message = 'Unknown error';
+      if (error instanceof Error) {
+        message = error.message;
+
+        // Check if it's an Axios error with response data
+        if ('response' in error && typeof error.response === 'object' && error.response !== null && 'data' in error.response && typeof error.response.data === 'object' && error.response.data !== null) {
+          const responseData = error.response.data as { message?: string };
+          if (responseData.message) {
+            message = responseData.message;
+          }
+        }
+      }
+
       if (engine === 'graphhopper' && message.includes('flexible mode')) {
         message = "GraphHopper Free tier does not support 'Balanced' or 'Stealth' modes. Please use 'Speed' mode, upgrade your GraphHopper plan, or switch to OpenRouteService.";
       }
-      
+
       alert(`Routing failed: ${message}`);
     } finally {
       setLoading(false);

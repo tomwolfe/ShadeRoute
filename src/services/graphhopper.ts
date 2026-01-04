@@ -19,6 +19,41 @@ export interface RouteResponse {
 
 export type StealthMode = 'speed' | 'balanced' | 'stealth';
 
+// Define types for GraphHopper API request
+interface GraphHopperFeature {
+  type: string;
+  id: string;
+  geometry: {
+    type: string;
+    coordinates: number[][][];
+  };
+  properties: Record<string, unknown>;
+}
+
+interface GraphHopperPriorityStatement {
+  if: string;
+  multiply_by: number;
+}
+
+interface GraphHopperCustomModel {
+  priority: GraphHopperPriorityStatement[];
+  areas?: {
+    type: string;
+    features: GraphHopperFeature[];
+  };
+}
+
+interface GraphHopperRequestBody {
+  points: [number, number][];
+  profile: string;
+  locale: string;
+  points_encoded: boolean;
+  elevation: boolean;
+  instructions: boolean;
+  'ch.disable'?: boolean;
+  custom_model?: GraphHopperCustomModel;
+}
+
 export async function getRoute(
   start: [number, number],
   end: [number, number],
@@ -26,20 +61,20 @@ export async function getRoute(
   mode: StealthMode,
   apiKey: string
 ): Promise<RouteResponse> {
-  const features: any[] = [];
-  const priorityStatements: any[] = [];
+  const features: GraphHopperFeature[] = [];
+  const priorityStatements: GraphHopperPriorityStatement[] = [];
 
   // Limit cameras to avoid huge request bodies, but take up to 100
   const relevantCameras = cameras.slice(0, 100);
 
   if (mode !== 'speed' && relevantCameras.length > 0) {
     const priorityFactor = mode === 'balanced' ? 0.1 : 0.01;
-    
+
     relevantCameras.forEach((cam, index) => {
       const areaId = `camera_${index}`;
       // Increase offset slightly to 0.0008 (~80-90m) for better avoidance coverage
       const offset = 0.0008;
-      
+
       features.push({
         type: 'Feature',
         id: areaId,
@@ -84,7 +119,7 @@ export async function getRoute(
     });
   }
 
-  const customModel: any = {
+  const customModel: GraphHopperCustomModel = {
     priority: priorityStatements
   };
 
@@ -95,7 +130,7 @@ export async function getRoute(
     };
   }
 
-  const requestBody: any = {
+  const requestBody: GraphHopperRequestBody = {
     points: [
       [start[1], start[0]],
       [end[1], end[0]]

@@ -9,21 +9,49 @@ export interface Camera {
     brand?: string;
     'surveillance:type'?: string;
     'surveillance:kind'?: string;
-    [key: string]: any;
+    [key: string]: string | undefined;
   };
+}
+
+// Define types for Overpass API response
+interface OverpassElement {
+  id: number;
+  lat?: number;
+  lon?: number;
+  center?: {
+    lat: number;
+    lon: number;
+  };
+  tags?: Record<string, string>;
+}
+
+interface OverpassResponse {
+  elements: OverpassElement[];
 }
 
 export async function fetchCameras(bbox: [number, number, number, number]): Promise<Camera[]> {
   const [south, west, north, east] = bbox;
-  
+
   // Limit bounding box size to avoid overwhelming Overpass
-  if (Math.abs(north - south) > 5 || Math.abs(east - west) > 5) {
+  const latDiff = Math.abs(north - south);
+  const lonDiff = Math.abs(east - west);
+
+  if (latDiff > 5 || lonDiff > 5) {
     console.warn('Bounding box too large, skipping camera fetch');
     return [];
   }
 
+  // Further limit for performance - if area is too large, reduce the query
+  const areaSize = latDiff * lonDiff;
+  let timeout = 25;
+  if (areaSize > 2) {
+    timeout = 45; // Allow more time for larger areas
+  } else if (areaSize > 0.5) {
+    timeout = 35;
+  }
+
   const query = `
-    [out:json][timeout:25];
+    [out:json][timeout:${timeout}];
     (
       node["man_made"="surveillance"](${south},${west},${north},${east});
       node["camera:type"~"alpr|lpr|number_plate",i](${south},${west},${north},${east});
@@ -40,19 +68,38 @@ export async function fetchCameras(bbox: [number, number, number, number]): Prom
     const response = await axios.post('https://overpass-api.de/api/interpreter', params.toString(), {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
-      }
+      },
+      timeout: timeout * 1000 + 5000 // Add 5s buffer to timeout
     });
-    
+
     if (!response.data || !response.data.elements) return [];
 
-    return response.data.elements.map((el: any) => ({
-      id: el.id,
-      lat: el.lat || (el.center && el.center.lat),
-      lon: el.lon || (el.center && el.center.lon),
-      tags: el.tags || {},
-    }));
+    const overpassData = response.data as OverpassResponse;
+
+    // Process elements with better error handling
+    const cameras: Camera[] = [];
+    for (const el of overpassData.elements) {
+      // Validate coordinates exist
+      const lat = el.lat || (el.center && el.center.lat);
+      const lon = el.lon || (el.center && el.center.lon);
+
+      if (lat !== undefined && lon !== undefined) {
+        cameras.push({
+          id: el.id,
+          lat,
+          lon,
+          tags: el.tags || {},
+        });
+      }
+    }
+
+    return cameras;
   } catch (error) {
-    console.error('Overpass fetch failed:', error);
+    if (axios.isCancel(error)) {
+      console.warn('Overpass request cancelled due to timeout');
+    } else {
+      console.error('Overpass fetch failed:', error);
+    }
     return []; // Return empty instead of throwing to allow routing to continue
   }
 }

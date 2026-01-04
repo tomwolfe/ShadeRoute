@@ -93,7 +93,15 @@ export async function getORSRoute(
     }
   );
 
+  if (!response.data || !response.data.features || response.data.features.length === 0) {
+    throw new Error('No route found from OpenRouteService');
+  }
+
   const feature = response.data.features[0];
+  if (!feature || !feature.geometry || !feature.properties || !feature.properties.summary) {
+    throw new Error('Invalid response format from OpenRouteService');
+  }
+
   return {
     coordinates: (feature.geometry.coordinates as [number, number][]).map((c) => [c[1], c[0]]),
     distance: feature.properties.summary.distance as number,

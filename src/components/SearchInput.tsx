@@ -41,7 +41,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({ placeholder, onSelect,
     return () => {
       if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
     };
-  }, [query]);
+  }, [query, value]);
 
   return (
     <div className="relative w-full">
