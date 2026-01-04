@@ -76,21 +76,26 @@ export async function getRoute(
     };
   }
 
+  const requestBody: any = {
+    points: [
+      [start[1], start[0]],
+      [end[1], end[0]]
+    ],
+    profile: 'car',
+    locale: 'en',
+    points_encoded: false,
+    elevation: false,
+    instructions: true,
+  };
+
+  if (priorityStatements.length > 0) {
+    requestBody['ch.disable'] = true;
+    requestBody.custom_model = customModel;
+  }
+
   const response = await axios.post(
     `https://graphhopper.com/api/1/route?key=${apiKey}`,
-    {
-      points: [
-        [start[1], start[0]],
-        [end[1], end[0]]
-      ],
-      profile: 'car',
-      locale: 'en',
-      points_encoded: false,
-      elevation: false,
-      instructions: true,
-      'ch.disable': true,
-      custom_model: priorityStatements.length > 0 ? customModel : undefined
-    }
+    requestBody
   );
 
   return response.data;

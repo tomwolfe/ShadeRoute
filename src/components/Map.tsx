@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, CircleMarker } from 'react-leaflet';
 import L from 'leaflet';
 import type { Camera } from '../services/overpass';
 
@@ -15,16 +15,6 @@ let DefaultIcon = L.icon({
 });
 
 L.Marker.prototype.options.icon = DefaultIcon;
-
-// Camera icon
-const cameraIcon = L.divIcon({
-  html: `<div class="bg-red-500 w-4 h-4 rounded-full border-2 border-white shadow-[0_0_10px_rgba(239,68,68,0.5)] flex items-center justify-center">
-           <div class="bg-white w-1 h-1 rounded-full"></div>
-         </div>`,
-  className: 'custom-camera-icon',
-  iconSize: [16, 16],
-  iconAnchor: [8, 8],
-});
 
 interface MapProps {
   center: [number, number];
@@ -78,19 +68,26 @@ export const Map: React.FC<MapProps> = ({ center, zoom, cameras, route, startPoi
         />
         
         {cameras.map((camera) => (
-          <Marker 
+          <CircleMarker 
             key={camera.id} 
-            position={[camera.lat, camera.lon]} 
-            icon={cameraIcon}
+            center={[camera.lat, camera.lon]} 
+            radius={6}
+            pathOptions={{
+              fillColor: '#ef4444',
+              fillOpacity: 0.8,
+              color: '#ffffff',
+              weight: 2,
+            }}
           >
             <Popup>
               <div className="text-xs">
-                <p className="font-bold">ALPR Camera</p>
+                <p className="font-bold">Surveillance Camera</p>
+                {camera.tags['surveillance:type'] && <p>Type: {camera.tags['surveillance:type']}</p>}
                 {camera.tags.brand && <p>Brand: {camera.tags.brand}</p>}
                 {camera.tags.name && <p>Name: {camera.tags.name}</p>}
               </div>
             </Popup>
-          </Marker>
+          </CircleMarker>
         ))}
 
         {startPoint && <Marker position={startPoint} />}

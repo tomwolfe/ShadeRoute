@@ -25,9 +25,10 @@ export async function fetchCameras(bbox: [number, number, number, number]): Prom
   const query = `
     [out:json][timeout:25];
     (
-      node["man_made"="surveillance"]["surveillance:type"~"ALPR|number_plate"](${south},${west},${north},${east});
-      node["man_made"="surveillance"]["surveillance:kind"~"lpr|alpr"](${south},${west},${north},${east});
-      node["camera:type"="alpr"](${south},${west},${north},${east});
+      node["man_made"="surveillance"](${south},${west},${north},${east});
+      node["camera:type"~"alpr|lpr|number_plate",i](${south},${west},${north},${east});
+      node["surveillance:type"~"alpr|lpr|number_plate",i](${south},${west},${north},${east});
+      node["surveillance:kind"~"alpr|lpr|number_plate",i](${south},${west},${north},${east});
     );
     out body center;
   `;
