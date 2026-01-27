@@ -1,20 +1,27 @@
 import axios from 'axios';
 import type { Camera } from './overpass';
 
-export interface RouteResponse {
-  paths: Array<{
+export interface RoutePath {
+  distance: number;
+  weight: number;
+  time: number;
+  points: {
+    coordinates: [number, number][];
+    type: string;
+  };
+  snapped_waypoints: {
+    coordinates: [number, number][];
+    type: string;
+  };
+  instructions: Array<{
+    text: string;
     distance: number;
-    weight: number;
     time: number;
-    points: {
-      coordinates: [number, number][];
-      type: string;
-    };
-    snapped_waypoints: {
-      coordinates: [number, number][];
-      type: string;
-    };
   }>;
+}
+
+export interface RouteResponse {
+  paths: RoutePath[];
 }
 
 export type StealthMode = 'speed' | 'balanced' | 'stealth';
@@ -64,16 +71,23 @@ export async function getRoute(
   const features: GraphHopperFeature[] = [];
   const priorityStatements: GraphHopperPriorityStatement[] = [];
 
-  // Limit cameras to avoid huge request bodies, but take up to 100
+  // Limit cameras to avoid huge request bodies
   const relevantCameras = cameras.slice(0, 100);
 
   if (mode !== 'speed' && relevantCameras.length > 0) {
-    const priorityFactor = mode === 'balanced' ? 0.1 : 0.01;
-
     relevantCameras.forEach((cam, index) => {
       const areaId = `camera_${index}`;
-      // Increase offset slightly to 0.0008 (~80-90m) for better avoidance coverage
-      const offset = 0.0008;
+      
+      const isALPR = 
+        cam.tags['surveillance:type']?.toLowerCase().includes('alpr') ||
+        cam.tags['surveillance:type']?.toLowerCase().includes('lpr') ||
+        cam.tags['camera:type']?.toLowerCase().includes('alpr') ||
+        cam.tags['camera:type']?.toLowerCase().includes('lpr');
+
+      // Radius: 0.0012 (~130m) for ALPR, 0.0006 (~65m) for others
+      const offset = isALPR ? 0.0012 : 0.0006;
+      // Multiplier: 0.01 for ALPR, 0.5 for others
+      const multiplier = isALPR ? 0.01 : 0.5;
 
       features.push({
         type: 'Feature',
@@ -93,16 +107,16 @@ export async function getRoute(
 
       priorityStatements.push({
         if: `in_${areaId}`,
-        multiply_by: priorityFactor
+        multiply_by: multiplier
       });
     });
   }
 
   if (mode === 'stealth') {
-    // Aggressively penalize major roads where ALPRs are most likely but maybe not tagged
+    // Aggressively penalize major roads where ALPRs are most likely
     priorityStatements.push({
       if: "road_class == MOTORWAY || road_class == TRUNK",
-      multiply_by: 0.1
+      multiply_by: 0.01
     });
     priorityStatements.push({
       if: "road_class == PRIMARY",

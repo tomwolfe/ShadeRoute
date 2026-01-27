@@ -101,12 +101,37 @@ describe('overpass service', () => {
       expect(result).toEqual([]);
     });
 
-    it('should return empty array when API returns no data', async () => {
+    it('should correctly identify various camera types in tags', async () => {
       const mockResponse = {
-        data: null
+        data: {
+          elements: [
+            {
+              id: 1, lat: 1, lon: 1,
+              tags: { 'surveillance:type': 'alpr' }
+            },
+            {
+              id: 2, lat: 2, lon: 2,
+              tags: { 'camera:type': 'lpr' }
+            },
+            {
+              id: 3, lat: 3, lon: 3,
+              tags: { 'surveillance:kind': 'number_plate' }
+            }
+          ]
+        }
       };
 
       mockedAxios.post.mockResolvedValue(mockResponse);
+      const result = await fetchCameras([0, 0, 5, 5]);
+      
+      expect(result).toHaveLength(3);
+      expect(result[0].tags['surveillance:type']).toBe('alpr');
+      expect(result[1].tags['camera:type']).toBe('lpr');
+      expect(result[2].tags['surveillance:kind']).toBe('number_plate');
+    });
+
+    it('should return empty array on request failure', async () => {
+      mockedAxios.post.mockRejectedValue(new Error('Network Error'));
 
       const result = await fetchCameras([37.0, -123.0, 38.0, -122.0]);
 

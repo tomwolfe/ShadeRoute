@@ -20,7 +20,8 @@ interface MapProps {
   center: [number, number];
   zoom: number;
   cameras: Camera[];
-  route: [number, number][] | null;
+  stealthRoute: [number, number][] | null;
+  fastestRoute: [number, number][] | null;
   startPoint: [number, number] | null;
   endPoint: [number, number] | null;
   onMapClick?: (lat: number, lon: number) => void;
@@ -35,15 +36,20 @@ function ClickHandler({ onClick }: { onClick?: (lat: number, lon: number) => voi
   return null;
 }
 
-function ChangeView({ route, startPoint, endPoint }: { 
-  route: [number, number][] | null,
+function ChangeView({ stealthRoute, fastestRoute, startPoint, endPoint }: { 
+  stealthRoute: [number, number][] | null,
+  fastestRoute: [number, number][] | null,
   startPoint: [number, number] | null,
   endPoint: [number, number] | null
 }) {
   const map = useMap();
   React.useEffect(() => {
+    const route = stealthRoute || fastestRoute;
     if (route && route.length > 0) {
       const bounds = L.latLngBounds(route);
+      if (stealthRoute && fastestRoute) {
+        bounds.extend(L.latLngBounds(fastestRoute));
+      }
       map.fitBounds(bounds, { padding: [50, 50] });
     } else if (startPoint && endPoint) {
       const bounds = L.latLngBounds([startPoint, endPoint]);
@@ -53,11 +59,20 @@ function ChangeView({ route, startPoint, endPoint }: {
     } else if (endPoint) {
       map.setView(endPoint, 13);
     }
-  }, [route, startPoint, endPoint, map]);
+  }, [stealthRoute, fastestRoute, startPoint, endPoint, map]);
   return null;
 }
 
-export const Map: React.FC<MapProps> = ({ center, zoom, cameras, route, startPoint, endPoint, onMapClick }) => {
+export const Map: React.FC<MapProps> = ({ 
+  center, 
+  zoom, 
+  cameras, 
+  stealthRoute, 
+  fastestRoute, 
+  startPoint, 
+  endPoint, 
+  onMapClick 
+}) => {
   return (
     <div className="h-full w-full">
       <MapContainer center={center} zoom={zoom} scrollWheelZoom={true} className="h-full w-full">
@@ -67,7 +82,8 @@ export const Map: React.FC<MapProps> = ({ center, zoom, cameras, route, startPoi
         />
         <ClickHandler onClick={onMapClick} />
         <ChangeView 
-          route={route} 
+          stealthRoute={stealthRoute} 
+          fastestRoute={fastestRoute} 
           startPoint={startPoint} 
           endPoint={endPoint} 
         />
@@ -107,10 +123,17 @@ export const Map: React.FC<MapProps> = ({ center, zoom, cameras, route, startPoi
           </Marker>
         )}
 
-        {route && (
+        {fastestRoute && (
           <Polyline 
-            positions={route} 
-            pathOptions={{ color: '#3b82f6', weight: 5, opacity: 0.8 }} 
+            positions={fastestRoute} 
+            pathOptions={{ color: '#64748b', weight: 4, opacity: 0.6, dashArray: '10, 10' }} 
+          />
+        )}
+
+        {stealthRoute && (
+          <Polyline 
+            positions={stealthRoute} 
+            pathOptions={{ color: '#3b82f6', weight: 6, opacity: 0.9 }} 
           />
         )}
       </MapContainer>

@@ -1,3 +1,6 @@
+/**
+ * @vitest-environment jsdom
+ */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { getStoredApiKeys, storeApiKeys, clearStoredApiKeys, type ApiKeyStorage } from './apiKeys';
 

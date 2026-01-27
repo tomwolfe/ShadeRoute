@@ -1,6 +1,19 @@
 import axios from 'axios';
 import type { Camera } from './overpass';
 
+export interface ORSInstruction {
+  text: string;
+  distance: number;
+  time: number;
+}
+
+export interface ORSRouteResult {
+  coordinates: [number, number][];
+  distance: number;
+  time: number;
+  instructions: ORSInstruction[];
+}
+
 export interface ORSResponse {
   features: Array<{
     geometry: {
@@ -12,6 +25,13 @@ export interface ORSResponse {
         distance: number;
         duration: number;
       };
+      segments: Array<{
+        steps: Array<{
+          instruction: string;
+          distance: number;
+          duration: number;
+        }>;
+      }>;
     };
   }>;
 }
@@ -24,7 +44,7 @@ export async function getORSRoute(
   cameras: Camera[],
   mode: StealthMode,
   apiKey: string
-): Promise<{ coordinates: [number, number][]; distance: number; time: number }> {
+): Promise<ORSRouteResult> {
   const coordinates = [
     [start[1], start[0]],
     [end[1], end[0]]
@@ -42,17 +62,24 @@ export async function getORSRoute(
     // Limit cameras to avoid huge request bodies
     const relevantCameras = cameras.slice(0, 50);
     
-    // ORS avoid_polygons works by completely avoiding the area
-    // For 'balanced' we might want smaller areas, for 'stealth' larger
-    const offset = mode === 'balanced' ? 0.0004 : 0.0008;
+    avoidPolygons.coordinates = relevantCameras.map(cam => {
+      const isALPR = 
+        cam.tags['surveillance:type']?.toLowerCase().includes('alpr') ||
+        cam.tags['surveillance:type']?.toLowerCase().includes('lpr') ||
+        cam.tags['camera:type']?.toLowerCase().includes('alpr') ||
+        cam.tags['camera:type']?.toLowerCase().includes('lpr');
 
-    avoidPolygons.coordinates = relevantCameras.map(cam => [[
-      [cam.lon - offset, cam.lat - offset],
-      [cam.lon + offset, cam.lat - offset],
-      [cam.lon + offset, cam.lat + offset],
-      [cam.lon - offset, cam.lat + offset],
-      [cam.lon - offset, cam.lat - offset]
-    ]]);
+      // Radius: 0.0012 (~130m) for ALPR, 0.0006 (~65m) for others
+      const offset = isALPR ? 0.0012 : 0.0006;
+
+      return [[
+        [cam.lon - offset, cam.lat - offset],
+        [cam.lon + offset, cam.lat - offset],
+        [cam.lon + offset, cam.lat + offset],
+        [cam.lon - offset, cam.lat + offset],
+        [cam.lon - offset, cam.lat - offset]
+      ]];
+    });
   }
 
   interface ORSOptions {
@@ -76,7 +103,6 @@ export async function getORSRoute(
   }
 
   // If stealth mode, we also want to avoid certain road classes if possible
-  // ORS supports avoid_features: ["highways", "tollways", "ferries", "fords"]
   if (mode === 'stealth') {
     if (!body.options) body.options = {};
     body.options.avoid_features = ["highways"];
@@ -102,9 +128,25 @@ export async function getORSRoute(
     throw new Error('Invalid response format from OpenRouteService');
   }
 
+  const instructions: ORSInstruction[] = [];
+  if (feature.properties.segments) {
+    feature.properties.segments.forEach((segment: any) => {
+      if (segment.steps) {
+        segment.steps.forEach((step: any) => {
+          instructions.push({
+            text: step.instruction,
+            distance: step.distance,
+            time: step.duration * 1000
+          });
+        });
+      }
+    });
+  }
+
   return {
     coordinates: (feature.geometry.coordinates as [number, number][]).map((c) => [c[1], c[0]]),
     distance: feature.properties.summary.distance as number,
-    time: (feature.properties.summary.duration as number) * 1000 // Convert to ms
+    time: (feature.properties.summary.duration as number) * 1000, // Convert to ms
+    instructions
   };
 }

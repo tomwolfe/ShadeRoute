@@ -13,15 +13,16 @@ export interface ApiKeyStorage {
 // Get stored API keys
 export function getStoredApiKeys(): Partial<ApiKeyStorage> {
   try {
-    const ghKey = localStorage.getItem(`${API_KEY_STORAGE_PREFIX}gh`) || '';
-    const orsKey = localStorage.getItem(`${API_KEY_STORAGE_PREFIX}ors`) || '';
+    const ghKey = localStorage.getItem(`${API_KEY_STORAGE_PREFIX}gh`);
+    const orsKey = localStorage.getItem(`${API_KEY_STORAGE_PREFIX}ors`);
     const engine = localStorage.getItem(`${API_KEY_STORAGE_PREFIX}engine`) as 'graphhopper' | 'openrouteservice' | null;
     
-    return {
-      gh_api_key: ghKey,
-      ors_api_key: orsKey,
-      routing_engine: engine || undefined
-    };
+    const result: Partial<ApiKeyStorage> = {};
+    if (ghKey !== null) result.gh_api_key = ghKey;
+    if (orsKey !== null) result.ors_api_key = orsKey;
+    if (engine !== null) result.routing_engine = engine;
+    
+    return result;
   } catch (error) {
     console.error('Error retrieving API keys from storage:', error);
     return {};

@@ -9,11 +9,12 @@ import { fetchCameras } from './services/overpass';
 import type { Camera } from './services/overpass';
 import { getRoute } from './services/graphhopper';
 import { getORSRoute } from './services/openrouteservice';
-import type { StealthMode, RouteResponse } from './services/graphhopper';
+import type { StealthMode } from './services/graphhopper';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { calculateBBox, bboxToArray } from './utils';
+import { calculateBBox, bboxToArray, calculateDistance } from './utils';
 import { getStoredApiKeys, storeApiKeys } from './services/apiKeys';
+import { countCamerasNearRoute, calculateStealthScore } from './utils/risk';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -21,60 +22,81 @@ function cn(...inputs: ClassValue[]) {
 
 type RoutingEngine = 'graphhopper' | 'openrouteservice';
 
+interface RouteData {
+  coordinates: [number, number][];
+  distance: number;
+  time: number;
+  instructions: Array<{ text: string; distance: number; time: number }>;
+  cameraCount: number;
+  stealthScore: number;
+}
+
 const App: React.FC = () => {
   const [start, setStart] = useState<GeocodeResult | null>(null);
   const [end, setEnd] = useState<GeocodeResult | null>(null);
   const [mode, setMode] = useState<StealthMode>('balanced');
   const [cameras, setCameras] = useState<Camera[]>([]);
-  const [route, setRoute] = useState<[number, number][] | null>(null);
-  const [routeInfo, setRouteInfo] = useState<{ distance: number; time: number } | null>(null);
+  const [stealthRoute, setStealthRoute] = useState<RouteData | null>(null);
+  const [fastestRoute, setFastestRoute] = useState<RouteData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [cameraLoading, setCameraLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const storedKeys = getStoredApiKeys();
   const [ghApiKey, setGhApiKey] = useState(storedKeys.gh_api_key || '');
   const [orsApiKey, setOrsApiKey] = useState(storedKeys.ors_api_key || '');
   const [engine, setEngine] = useState<RoutingEngine>(storedKeys.routing_engine || 'graphhopper');
-  const lastFetchedBBox = React.useRef<string>('');
+  const lastFetchedCenter = React.useRef<{ lat: number, lon: number } | null>(null);
   const lastFetchedCameras = React.useRef<Camera[]>([]);
 
   useEffect(() => {
     const autoFetchCameras = async () => {
       if (start && end) {
-        const bbox = calculateBBox(
-          parseFloat(start.lat),
-          parseFloat(start.lon),
-          parseFloat(end.lat),
-          parseFloat(end.lon)
-        );
-        const bboxString = JSON.stringify(bbox);
+        const sLat = parseFloat(start.lat);
+        const sLon = parseFloat(start.lon);
+        const eLat = parseFloat(end.lat);
+        const eLon = parseFloat(end.lon);
+        
+        const centerLat = (sLat + eLat) / 2;
+        const centerLon = (sLon + eLon) / 2;
 
-        if (bboxString === lastFetchedBBox.current) return;
-        lastFetchedBBox.current = bboxString;
+        if (lastFetchedCenter.current) {
+          const dist = calculateDistance(
+            centerLat, centerLon, 
+            lastFetchedCenter.current.lat, lastFetchedCenter.current.lon
+          );
+          if (dist < 5) return; // 5km threshold
+        }
 
+        setCameraLoading(true);
         try {
+          const bbox = calculateBBox(sLat, sLon, eLat, eLon);
           const fetched = await fetchCameras(bboxToArray(bbox));
           setCameras(fetched);
-          lastFetchedCameras.current = fetched; // Cache the fetched cameras
+          lastFetchedCameras.current = fetched;
+          lastFetchedCenter.current = { lat: centerLat, lon: centerLon };
         } catch (err) {
           console.error('Auto-fetch cameras failed:', err);
+        } finally {
+          setCameraLoading(false);
         }
       }
     };
 
-    // Debounce the camera fetching to avoid too many requests
-    const timer = setTimeout(autoFetchCameras, 300);
+    const timer = setTimeout(autoFetchCameras, 500);
     return () => clearTimeout(timer);
   }, [start, end]);
 
   const handleRoute = async () => {
     if (!start || !end) return;
+    setError(null);
     
     if (engine === 'graphhopper' && !ghApiKey) {
-      alert('Please enter a GraphHopper API Key.');
+      setError('Please enter a GraphHopper API Key.');
       return;
     }
     if (engine === 'openrouteservice' && !orsApiKey) {
-      alert('Please enter an OpenRouteService API Key.');
+      setError('Please enter an OpenRouteService API Key.');
       return;
     }
     
@@ -86,75 +108,59 @@ const App: React.FC = () => {
 
     setLoading(true);
     try {
-      console.log(`Starting route calculation using ${engine}...`);
       const sLat = parseFloat(start.lat);
       const sLon = parseFloat(start.lon);
       const eLat = parseFloat(end.lat);
       const eLon = parseFloat(end.lon);
 
-      // Use cached cameras if available, otherwise fetch new ones
       let currentCameras = cameras.length > 0 ? cameras : lastFetchedCameras.current;
       if (currentCameras.length === 0) {
+        setCameraLoading(true);
         const bbox = calculateBBox(sLat, sLon, eLat, eLon);
         currentCameras = await fetchCameras(bboxToArray(bbox));
         setCameras(currentCameras);
-        lastFetchedCameras.current = currentCameras; // Update cache
+        lastFetchedCameras.current = currentCameras;
+        setCameraLoading(false);
       }
 
-      if (engine === 'graphhopper') {
-        const response: RouteResponse = await getRoute(
-          [sLat, sLon],
-          [eLat, eLon],
-          currentCameras,
-          mode,
-          ghApiKey
-        );
-
-        if (response.paths && response.paths.length > 0) {
+      const fetchRoute = async (m: StealthMode): Promise<RouteData> => {
+        if (engine === 'graphhopper') {
+          const response = await getRoute([sLat, sLon], [eLat, eLon], currentCameras, m, ghApiKey);
           const path = response.paths[0];
           const coords = path.points.coordinates.map(c => [c[1], c[0]] as [number, number]);
-          setRoute(coords);
-          setRouteInfo({
+          const camCount = countCamerasNearRoute(coords, currentCameras);
+          return {
+            coordinates: coords,
             distance: path.distance,
             time: path.time,
-          });
+            instructions: path.instructions,
+            cameraCount: camCount,
+            stealthScore: calculateStealthScore(camCount)
+          };
+        } else {
+          const result = await getORSRoute([sLat, sLon], [eLat, eLon], currentCameras, m, orsApiKey);
+          const camCount = countCamerasNearRoute(result.coordinates, currentCameras);
+          return {
+            ...result,
+            cameraCount: camCount,
+            stealthScore: calculateStealthScore(camCount)
+          };
         }
-      } else {
-        const result = await getORSRoute(
-          [sLat, sLon],
-          [eLat, eLon],
-          currentCameras,
-          mode,
-          orsApiKey
-        );
-        setRoute(result.coordinates);
-        setRouteInfo({
-          distance: result.distance,
-          time: result.time,
-        });
-      }
+      };
+
+      // Fetch both for comparison
+      const [stealthRes, fastestRes] = await Promise.all([
+        fetchRoute(mode),
+        fetchRoute('speed')
+      ]);
+
+      setStealthRoute(stealthRes);
+      setFastestRoute(fastestRes);
+
     } catch (error: unknown) {
-      console.error('Routing failed details:', error);
-
-      // Type guard to check if error is an Axios error
-      let message = 'Unknown error';
-      if (error instanceof Error) {
-        message = error.message;
-
-        // Check if it's an Axios error with response data
-        if ('response' in error && typeof error.response === 'object' && error.response !== null && 'data' in error.response && typeof error.response.data === 'object' && error.response.data !== null) {
-          const responseData = error.response.data as { message?: string };
-          if (responseData.message) {
-            message = responseData.message;
-          }
-        }
-      }
-
-      if (engine === 'graphhopper' && message.includes('flexible mode')) {
-        message = "GraphHopper Free tier does not support 'Balanced' or 'Stealth' modes. Please use 'Speed' mode, upgrade your GraphHopper plan, or switch to OpenRouteService.";
-      }
-
-      alert(`Routing failed: ${message}`);
+      let message = 'Routing failed';
+      if (error instanceof Error) message = error.message;
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -174,9 +180,28 @@ const App: React.FC = () => {
     }
   };
 
+  const getPenalty = () => {
+    if (!stealthRoute || !fastestRoute) return null;
+    const timeDiff = stealthRoute.time - fastestRoute.time;
+    if (timeDiff <= 0) return null;
+    return Math.round(timeDiff / 60000);
+  };
+
   return (
     <div className="flex h-screen w-screen bg-gray-950 text-white overflow-hidden relative font-sans">
       <Analytics />
+      
+      {/* Toast Error */}
+      {error && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-red-600 text-white px-4 py-2 rounded-lg shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4">
+          <ShieldAlert size={18} />
+          <span className="text-sm font-medium">{error}</span>
+          <button onClick={() => setError(null)} className="ml-2 hover:bg-white/20 rounded-full p-1">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {/* Mobile Header */}
       <div className="absolute top-0 left-0 right-0 z-40 p-4 flex justify-between items-center md:hidden bg-gray-900/80 backdrop-blur-md">
         <div className="flex items-center gap-2">
@@ -193,7 +218,7 @@ const App: React.FC = () => {
         "absolute md:relative z-30 h-full w-full md:w-96 bg-gray-900 border-r border-gray-800 flex flex-col transition-transform duration-300",
         sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       )}>
-        <div className="p-6 flex-1 overflow-y-auto">
+        <div className="p-6 flex-1 overflow-y-auto custom-scrollbar">
           <div className="hidden md:flex items-center gap-3 mb-8">
             <Shield className="text-blue-500" size={32} />
             <h1 className="text-2xl font-bold tracking-tight">ShadeRoute</h1>
@@ -209,7 +234,7 @@ const App: React.FC = () => {
               />
               {start && (
                 <button 
-                  onClick={() => { setStart(null); setRoute(null); setRouteInfo(null); }}
+                  onClick={() => { setStart(null); setStealthRoute(null); setFastestRoute(null); }}
                   className="absolute right-2 top-7 p-1 text-gray-500 hover:text-white transition-colors"
                 >
                   <X size={14} />
@@ -225,7 +250,7 @@ const App: React.FC = () => {
               />
               {end && (
                 <button 
-                  onClick={() => { setEnd(null); setRoute(null); setRouteInfo(null); }}
+                  onClick={() => { setEnd(null); setStealthRoute(null); setFastestRoute(null); }}
                   className="absolute right-2 top-7 p-1 text-gray-500 hover:text-white transition-colors"
                 >
                   <X size={14} />
@@ -234,7 +259,15 @@ const App: React.FC = () => {
             </div>
 
             <div className="space-y-4 bg-gray-800/50 p-4 rounded-xl border border-gray-700">
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">Routing Provider</label>
+              <div className="flex justify-between items-center">
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">Routing Provider</label>
+                {cameraLoading && (
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                    <span className="text-[10px] text-blue-400 font-medium">Updating cameras...</span>
+                  </div>
+                )}
+              </div>
               <div className="flex gap-2">
                 {(['graphhopper', 'openrouteservice'] as RoutingEngine[]).map((e) => (
                   <button
@@ -262,9 +295,6 @@ const App: React.FC = () => {
                     placeholder="Enter GH API Key..."
                     className="w-full bg-gray-900 text-white rounded-lg px-3 py-2 border border-gray-700 focus:outline-none focus:border-blue-500 transition-colors text-xs"
                   />
-                  <p className="text-[9px] text-gray-600 px-1">
-                    Free tier: 'Speed' mode only.
-                  </p>
                 </div>
               ) : (
                 <div className="space-y-1">
@@ -276,15 +306,12 @@ const App: React.FC = () => {
                     placeholder="Enter ORS API Key..."
                     className="w-full bg-gray-900 text-white rounded-lg px-3 py-2 border border-gray-700 focus:outline-none focus:border-blue-500 transition-colors text-xs"
                   />
-                  <p className="text-[9px] text-gray-600 px-1">
-                    Free tier supports all modes. Get at <a href="https://openrouteservice.org" target="_blank" className="text-blue-500 hover:underline">openrouteservice.org</a>
-                  </p>
                 </div>
               )}
             </div>
 
             <div className="space-y-3">
-              <label className="block text-xs font-medium text-gray-400 ml-1">ROUTE PRIORITY</label>
+              <label className="block text-xs font-medium text-gray-400 ml-1">STEALTH INTENSITY</label>
               <div className="flex bg-gray-800 p-1 rounded-xl border border-gray-700">
                 {(['speed', 'balanced', 'stealth'] as StealthMode[]).map((m) => (
                   <button
@@ -302,11 +329,6 @@ const App: React.FC = () => {
                   </button>
                 ))}
               </div>
-              <p className="text-[10px] text-gray-500 px-1 leading-relaxed">
-                {mode === 'speed' && "Standard fastest route. No ALPR avoidance."}
-                {mode === 'balanced' && "Avoids direct camera hits with moderate travel time increases."}
-                {mode === 'stealth' && "Maximum avoidance. Penalizes major roads with known surveillance."}
-              </p>
             </div>
 
             <button
@@ -319,28 +341,72 @@ const App: React.FC = () => {
               ) : (
                 <>
                   <Navigation size={18} />
-                  Calculate Stealth Route
+                  Calculate Routes
                 </>
               )}
             </button>
 
-            {routeInfo && (
-              <div className="bg-blue-950/30 border border-blue-900/50 rounded-xl p-4 space-y-3 animate-in fade-in slide-in-from-bottom-2">
-                <div className="flex justify-between items-center text-sm border-b border-blue-900/30 pb-2">
-                  <span className="text-blue-300 font-medium">Distance</span>
-                  <span className="text-white font-bold">{formatDistance(routeInfo.distance)}</span>
+            {stealthRoute && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                {/* Score Panel */}
+                <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+                  <div className={cn(
+                    "p-4 flex items-center justify-between",
+                    stealthRoute.stealthScore > 80 ? "bg-green-600/10" : 
+                    stealthRoute.stealthScore > 50 ? "bg-yellow-600/10" : "bg-red-600/10"
+                  )}>
+                    <div>
+                      <h3 className="text-xs font-bold text-gray-400 uppercase">Stealth Score</h3>
+                      <p className={cn(
+                        "text-2xl font-black",
+                        stealthRoute.stealthScore > 80 ? "text-green-400" : 
+                        stealthRoute.stealthScore > 50 ? "text-yellow-400" : "text-red-400"
+                      )}>{stealthRoute.stealthScore}/100</p>
+                    </div>
+                    <div className="text-right">
+                      <h3 className="text-xs font-bold text-gray-400 uppercase">Cameras Avoided</h3>
+                      <p className="text-xl font-bold">{stealthRoute.cameraCount}</p>
+                    </div>
+                  </div>
+                  
+                  {getPenalty() && (
+                    <div className="px-4 py-2 bg-gray-900/50 border-t border-gray-700 flex items-center gap-2 text-[10px] text-gray-400">
+                      <Info size={12} className="text-blue-400" />
+                      <span>Stealth Penalty: +{getPenalty()} min compared to fastest route.</span>
+                    </div>
+                  )}
                 </div>
-                <div className="flex justify-between items-center text-sm border-b border-blue-900/30 pb-2">
-                  <span className="text-blue-300 font-medium">Est. Time</span>
-                  <span className="text-white font-bold">{formatTime(routeInfo.time)}</span>
+
+                {/* Route Info Cards */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-gray-800 p-3 rounded-lg border border-gray-700">
+                    <span className="block text-[10px] font-bold text-gray-500 uppercase">Distance</span>
+                    <span className="text-sm font-bold">{formatDistance(stealthRoute.distance)}</span>
+                  </div>
+                  <div className="bg-gray-800 p-3 rounded-lg border border-gray-700">
+                    <span className="block text-[10px] font-bold text-gray-500 uppercase">Duration</span>
+                    <span className="text-sm font-bold">{formatTime(stealthRoute.time)}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-blue-300 font-medium">Cameras in Area</span>
-                  <span className="text-white font-bold">{cameras.length} spotted</span>
-                </div>
-                <div className="mt-2 pt-2 bg-blue-500/10 rounded-lg p-2 text-[10px] text-blue-200 flex items-center gap-2">
-                  <ShieldCheck size={14} className="text-blue-400" />
-                  Route optimized to avoid detection.
+
+                {/* Instructions */}
+                <div className="space-y-2">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase px-1">Turn-by-Turn</h3>
+                  <div className="bg-gray-800/50 border border-gray-700 rounded-xl max-h-64 overflow-y-auto custom-scrollbar">
+                    {stealthRoute.instructions.map((inst, idx) => (
+                      <div key={idx} className="p-3 border-b border-gray-700/50 last:border-0 flex gap-3 items-start hover:bg-gray-800 transition-colors">
+                        <div className="mt-0.5 p-1 bg-gray-900 rounded text-blue-400">
+                          <Navigation size={12} className={cn(idx === 0 && "rotate-0")} />
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-xs text-gray-200 leading-tight">{inst.text}</p>
+                          <p className="text-[10px] text-gray-500 font-medium">
+                            {inst.distance > 0 ? `${(inst.distance * 0.000621371).toFixed(2)} mi` : ''}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -350,19 +416,10 @@ const App: React.FC = () => {
         <div className="p-6 border-t border-gray-800 space-y-4">
           <div className="flex items-center gap-3 p-3 bg-gray-800/50 rounded-lg">
             <Info size={18} className="text-blue-400 shrink-0" />
-            <p className="text-[10px] text-gray-400">
-              ShadeRoute uses OpenStreetMap data from the DeFlock community to identify ALPR locations.
+            <p className="text-[10px] text-gray-400 leading-relaxed">
+              ShadeRoute identifies surveillance clusters using OSM & DeFlock data. Always prioritize safety and legal compliance.
             </p>
           </div>
-          <a 
-            href="https://deflock.me" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 text-xs font-medium text-gray-400 hover:text-white transition-colors group"
-          >
-            Report new camera to DeFlock
-            <ExternalLink size={12} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-          </a>
         </div>
       </div>
 
@@ -372,7 +429,8 @@ const App: React.FC = () => {
           center={[37.7749, -122.4194]} 
           zoom={12} 
           cameras={cameras} 
-          route={route}
+          stealthRoute={stealthRoute?.coordinates || null}
+          fastestRoute={fastestRoute?.coordinates || null}
           startPoint={start ? [parseFloat(start.lat), parseFloat(start.lon)] : null}
           endPoint={end ? [parseFloat(end.lat), parseFloat(end.lon)] : null}
           onMapClick={handleMapClick}
