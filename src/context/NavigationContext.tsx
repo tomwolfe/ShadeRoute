@@ -134,6 +134,7 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       stealthRoute, setStealthRoute,
       fastestRoute, setFastestRoute,
       loading, setLoading,
+      cameraLoading, setCameraLoading,
       error, setError,
       ghApiKey, setGhApiKey,
       orsApiKey, setOrsApiKey,

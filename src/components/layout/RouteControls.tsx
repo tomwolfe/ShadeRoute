@@ -1,10 +1,10 @@
 import React from 'react';
 import { SearchInput } from '../SearchInput';
-import { X, Navigation } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 
 export const RouteControls: React.FC = () => {
-  const { start, setStart, end, setEnd, loading, stealthRoute } = useNavigation();
+  const { start, setStart, end, setEnd } = useNavigation();
 
   return (
     <div className="space-y-4">
