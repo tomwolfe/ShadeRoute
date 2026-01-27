@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, ShieldAlert, ShieldCheck, Navigation, Info, ExternalLink, Menu, X } from 'lucide-react';
+import { Shield, ShieldAlert, ShieldCheck, Navigation, Info, Menu, X } from 'lucide-react';
 import { Analytics } from '@vercel/analytics/react';
 import { SearchInput } from './components/SearchInput';
 import { Map } from './components/Map';
