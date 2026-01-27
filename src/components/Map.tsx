@@ -22,6 +22,7 @@ interface MapProps {
   cameras: Camera[];
   stealthRoute: [number, number][] | null;
   fastestRoute: [number, number][] | null;
+  showFastestRoute?: boolean;
   startPoint: [number, number] | null;
   endPoint: [number, number] | null;
   onMapClick?: (lat: number, lon: number) => void;
@@ -69,13 +70,20 @@ export const Map: React.FC<MapProps> = ({
   cameras, 
   stealthRoute, 
   fastestRoute, 
+  showFastestRoute = true,
   startPoint, 
   endPoint, 
   onMapClick 
 }) => {
   return (
     <div className="h-full w-full">
-      <MapContainer center={center} zoom={zoom} scrollWheelZoom={true} className="h-full w-full">
+      <MapContainer 
+        center={center} 
+        zoom={zoom} 
+        scrollWheelZoom={true} 
+        className="h-full w-full"
+        preferCanvas={true}
+      >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -92,12 +100,12 @@ export const Map: React.FC<MapProps> = ({
           <CircleMarker 
             key={camera.id} 
             center={[camera.lat, camera.lon]} 
-            radius={6}
+            radius={4}
             pathOptions={{
               fillColor: '#ef4444',
               fillOpacity: 0.8,
               color: '#ffffff',
-              weight: 2,
+              weight: 1,
             }}
           >
             <Popup>
@@ -123,7 +131,7 @@ export const Map: React.FC<MapProps> = ({
           </Marker>
         )}
 
-        {fastestRoute && (
+        {fastestRoute && showFastestRoute && (
           <Polyline 
             positions={fastestRoute} 
             pathOptions={{ color: '#64748b', weight: 4, opacity: 0.6, dashArray: '10, 10' }} 
