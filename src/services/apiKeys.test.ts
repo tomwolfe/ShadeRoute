@@ -4,107 +4,180 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { getStoredApiKeys, storeApiKeys, clearStoredApiKeys, type ApiKeyStorage } from './apiKeys';
 
-// Mock localStorage
-const localStorageMock = (() => {
-  let store: Record<string, string> = {};
-  
-  return {
-    getItem: (key: string) => store[key] || null,
-    setItem: (key: string, value: string) => {
-      store[key] = value.toString();
-    },
-    removeItem: (key: string) => {
-      delete store[key];
-    },
-    clear: () => {
-      store = {};
-    },
-  };
-})();
+// Mock storage
 
-Object.defineProperty(window, 'localStorage', {
-  value: localStorageMock,
-});
+const createMockStorage = () => {
+
+  let store: Record<string, string> = {};
+
+  return {
+
+    getItem: (key: string) => store[key] || null,
+
+    setItem: (key: string, value: string) => {
+
+      store[key] = value.toString();
+
+    },
+
+    removeItem: (key: string) => {
+
+      delete store[key];
+
+    },
+
+    clear: () => {
+
+      store = {};
+
+    },
+
+  };
+
+};
+
+
+
+const localStorageMock = createMockStorage();
+
+const sessionStorageMock = createMockStorage();
+
+
+
+Object.defineProperty(window, 'localStorage', { value: localStorageMock });
+
+Object.defineProperty(window, 'sessionStorage', { value: sessionStorageMock });
+
+
 
 describe('apiKeys service', () => {
+
   beforeEach(() => {
+
     localStorage.clear();
+
+    sessionStorage.clear();
+
   });
+
+
 
   afterEach(() => {
+
     localStorage.clear();
+
+    sessionStorage.clear();
+
   });
+
+
 
   describe('storeApiKeys', () => {
-    it('should store API keys in localStorage with correct prefixes', () => {
+
+    it('should store API keys in sessionStorage by default', () => {
+
       const keys: Partial<ApiKeyStorage> = {
+
         gh_api_key: 'test-gh-key',
+
         ors_api_key: 'test-ors-key',
+
         routing_engine: 'openrouteservice'
+
       };
+
+
 
       storeApiKeys(keys);
 
-      expect(localStorage.getItem('shaderoute_api_key_gh')).toBe('test-gh-key');
-      expect(localStorage.getItem('shaderoute_api_key_ors')).toBe('test-ors-key');
-      expect(localStorage.getItem('shaderoute_api_key_engine')).toBe('openrouteservice');
+
+
+      expect(sessionStorage.getItem('shaderoute_api_key_gh')).toBe('test-gh-key');
+
+      expect(localStorage.getItem('shaderoute_api_key_gh')).toBe(null);
+
     });
 
-    it('should store only provided keys', () => {
+
+
+    it('should store API keys in localStorage when persistent is true', () => {
+
       const keys: Partial<ApiKeyStorage> = {
+
         gh_api_key: 'test-gh-key'
+
       };
 
-      storeApiKeys(keys);
+
+
+      storeApiKeys(keys, true);
+
+
 
       expect(localStorage.getItem('shaderoute_api_key_gh')).toBe('test-gh-key');
-      expect(localStorage.getItem('shaderoute_api_key_ors')).toBe(null);
-      expect(localStorage.getItem('shaderoute_api_key_engine')).toBe(null);
+
+      expect(sessionStorage.getItem('shaderoute_api_key_gh')).toBe(null);
+
     });
+
   });
 
+
+
   describe('getStoredApiKeys', () => {
-    it('should retrieve stored API keys', () => {
+
+    it('should retrieve keys from either storage', () => {
+
       localStorage.setItem('shaderoute_api_key_gh', 'stored-gh-key');
-      localStorage.setItem('shaderoute_api_key_ors', 'stored-ors-key');
-      localStorage.setItem('shaderoute_api_key_engine', 'graphhopper');
+
+      sessionStorage.setItem('shaderoute_api_key_ors', 'session-ors-key');
+
+
 
       const result = getStoredApiKeys();
 
+
+
       expect(result.gh_api_key).toBe('stored-gh-key');
-      expect(result.ors_api_key).toBe('stored-ors-key');
-      expect(result.routing_engine).toBe('graphhopper');
+
+      expect(result.ors_api_key).toBe('session-ors-key');
+
     });
 
+
+
     it('should return empty object when no keys are stored', () => {
+
       const result = getStoredApiKeys();
 
       expect(result).toEqual({});
+
     });
 
-    it('should handle missing keys gracefully', () => {
-      localStorage.setItem('shaderoute_api_key_gh', 'stored-gh-key');
-      // Missing other keys
-
-      const result = getStoredApiKeys();
-
-      expect(result.gh_api_key).toBe('stored-gh-key');
-      expect(result.ors_api_key).toBeUndefined();
-      expect(result.routing_engine).toBeUndefined();
-    });
   });
 
+
+
   describe('clearStoredApiKeys', () => {
-    it('should clear all stored API keys', () => {
+
+    it('should clear both storages', () => {
+
       localStorage.setItem('shaderoute_api_key_gh', 'test-key');
-      localStorage.setItem('shaderoute_api_key_ors', 'test-key');
-      localStorage.setItem('shaderoute_api_key_engine', 'graphhopper');
+
+      sessionStorage.setItem('shaderoute_api_key_gh', 'test-key');
+
+
 
       clearStoredApiKeys();
 
+
+
       expect(localStorage.getItem('shaderoute_api_key_gh')).toBe(null);
-      expect(localStorage.getItem('shaderoute_api_key_ors')).toBe(null);
-      expect(localStorage.getItem('shaderoute_api_key_engine')).toBe(null);
+
+      expect(sessionStorage.getItem('shaderoute_api_key_gh')).toBe(null);
+
     });
+
   });
+
 });

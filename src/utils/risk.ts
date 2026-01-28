@@ -37,10 +37,18 @@ export function countCamerasNearRoute(
 }
 
 /**
- * Calculates a "Stealth Score" from 0-100.
+ * Calculates a "Stealth Score" from 0-100 based on camera density.
  * 100 is perfectly stealthy (0 cameras), lower is worse.
+ * @param cameraCount Number of cameras near the route
+ * @param distanceMeters Route distance in meters
  */
-export function calculateStealthScore(cameraCount: number): number {
-  if (cameraCount === 0) return 100;
-  return Math.max(0, 100 - (cameraCount * 5)); // Every camera takes 5 points
+export function calculateStealthScore(cameraCount: number, distanceMeters: number): number {
+  if (cameraCount === 0 || distanceMeters === 0) return 100;
+  
+  const distanceKm = distanceMeters / 1000;
+  const camerasPerKm = cameraCount / distanceKm;
+  
+  // 10 cameras per km results in a score of 0
+  // 1 camera per km results in a score of 90
+  return Math.max(0, Math.round(100 - (camerasPerKm * 10)));
 }

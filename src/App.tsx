@@ -11,7 +11,7 @@ const App: React.FC = () => {
   const {
     start, setStart, end, setEnd, error, setError,
     stealthRoute, fastestRoute, sidebarOpen, setSidebarOpen,
-    showFastestRoute, setCameraLoading
+    showFastestRoute, setCameraLoading, loading, cameraLoading
   } = useNavigation();
 
   const { cameras, getCamerasForRoute } = useCameras();
@@ -73,6 +73,8 @@ const App: React.FC = () => {
           startPoint={start ? [parseFloat(start.lat), parseFloat(start.lon)] : null}
           endPoint={end ? [parseFloat(end.lat), parseFloat(end.lon)] : null}
           onMapClick={handleMapClick}
+          isLoading={loading}
+          isCameraLoading={cameraLoading}
         />
       </div>
     </div>

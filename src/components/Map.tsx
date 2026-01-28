@@ -26,6 +26,8 @@ interface MapProps {
   startPoint: [number, number] | null;
   endPoint: [number, number] | null;
   onMapClick?: (lat: number, lon: number) => void;
+  isLoading?: boolean;
+  isCameraLoading?: boolean;
 }
 
 function ClickHandler({ onClick }: { onClick?: (lat: number, lon: number) => void }) {
@@ -73,10 +75,25 @@ export const Map: React.FC<MapProps> = ({
   showFastestRoute = true,
   startPoint, 
   endPoint, 
-  onMapClick 
+  onMapClick,
+  isLoading = false,
+  isCameraLoading = false
 }) => {
   return (
-    <div className="h-full w-full">
+    <div className="h-full w-full relative">
+      {(isLoading || isCameraLoading) && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-gray-900/90 backdrop-blur-md border border-gray-700 px-4 py-2 rounded-full shadow-2xl flex items-center gap-3">
+          <div className="flex gap-1">
+            <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
+            <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
+            <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" />
+          </div>
+          <span className="text-xs font-bold text-gray-200 uppercase tracking-widest">
+            {isCameraLoading ? 'Scanning Cameras' : 'Calculating Route'}
+          </span>
+        </div>
+      )}
+
       <MapContainer 
         center={center} 
         zoom={zoom} 

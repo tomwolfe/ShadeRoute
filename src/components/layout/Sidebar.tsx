@@ -6,6 +6,7 @@ import { useRouting } from '../../hooks/useRouting';
 import { RouteControls } from './RouteControls';
 import { SettingsPanel } from './SettingsPanel';
 import { RouteStats } from './RouteStats';
+import { DirectionsList } from './DirectionsList';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -71,6 +72,7 @@ export const Sidebar: React.FC = () => {
           </button>
 
           <RouteStats />
+          <DirectionsList />
         </div>
       </div>
 

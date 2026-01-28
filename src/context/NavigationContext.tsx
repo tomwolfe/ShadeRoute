@@ -61,13 +61,13 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [cameraLoading, setCameraLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [sessionOnlyKeys, setSessionOnlyKeys] = useState(false);
+  const [sessionOnlyKeys, setSessionOnlyKeys] = useState(true);
   const [showFastestRoute, setShowFastestRoute] = useState(true);
   
   const [ghApiKey, setGhApiKey] = useState(storedKeys.gh_api_key || '');
   const [orsApiKey, setOrsApiKey] = useState(storedKeys.ors_api_key || '');
 
-  // Handle URL state sync
+  // ... (URL state sync)
   useEffect(() => {
     const loadFromUrl = async () => {
       const params = new URLSearchParams(window.location.search);
@@ -116,13 +116,11 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, []);
 
   useEffect(() => {
-    if (!sessionOnlyKeys) {
-      storeApiKeys({
-        gh_api_key: ghApiKey,
-        ors_api_key: orsApiKey,
-        routing_engine: engine
-      });
-    }
+    storeApiKeys({
+      gh_api_key: ghApiKey,
+      ors_api_key: orsApiKey,
+      routing_engine: engine
+    }, !sessionOnlyKeys);
   }, [ghApiKey, orsApiKey, engine, sessionOnlyKeys]);
 
   return (

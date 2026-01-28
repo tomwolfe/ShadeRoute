@@ -45,7 +45,7 @@ export const useRouting = () => {
             time: path.time,
             instructions: path.instructions,
             cameraCount: camCount,
-            stealthScore: calculateStealthScore(camCount)
+            stealthScore: calculateStealthScore(camCount, path.distance)
           };
         } else {
           const result = await getORSRoute([sLat, sLon], [eLat, eLon], cameras, m, orsApiKey);
@@ -53,7 +53,7 @@ export const useRouting = () => {
           return {
             ...result,
             cameraCount: camCount,
-            stealthScore: calculateStealthScore(camCount)
+            stealthScore: calculateStealthScore(camCount, result.distance)
           };
         }
       };

@@ -10,12 +10,14 @@ export interface ApiKeyStorage {
   routing_engine: 'graphhopper' | 'openrouteservice';
 }
 
-// Get stored API keys
+// Get stored API keys from both localStorage and sessionStorage
 export function getStoredApiKeys(): Partial<ApiKeyStorage> {
   try {
-    const ghKey = localStorage.getItem(`${API_KEY_STORAGE_PREFIX}gh`);
-    const orsKey = localStorage.getItem(`${API_KEY_STORAGE_PREFIX}ors`);
-    const engine = localStorage.getItem(`${API_KEY_STORAGE_PREFIX}engine`) as 'graphhopper' | 'openrouteservice' | null;
+    const get = (key: string) => localStorage.getItem(key) || sessionStorage.getItem(key);
+    
+    const ghKey = get(`${API_KEY_STORAGE_PREFIX}gh`);
+    const orsKey = get(`${API_KEY_STORAGE_PREFIX}ors`);
+    const engine = get(`${API_KEY_STORAGE_PREFIX}engine`) as 'graphhopper' | 'openrouteservice' | null;
     
     const result: Partial<ApiKeyStorage> = {};
     if (ghKey !== null) result.gh_api_key = ghKey;
@@ -29,29 +31,38 @@ export function getStoredApiKeys(): Partial<ApiKeyStorage> {
   }
 }
 
-// Store API keys
-export function storeApiKeys(keys: Partial<ApiKeyStorage>): void {
+// Store API keys with optional persistence
+export function storeApiKeys(keys: Partial<ApiKeyStorage>, persistent: boolean = false): void {
   try {
+    const storage = persistent ? localStorage : sessionStorage;
+    const otherStorage = persistent ? sessionStorage : localStorage;
+
     if (keys.gh_api_key !== undefined) {
-      localStorage.setItem(`${API_KEY_STORAGE_PREFIX}gh`, keys.gh_api_key);
+      storage.setItem(`${API_KEY_STORAGE_PREFIX}gh`, keys.gh_api_key);
+      otherStorage.removeItem(`${API_KEY_STORAGE_PREFIX}gh`);
     }
     if (keys.ors_api_key !== undefined) {
-      localStorage.setItem(`${API_KEY_STORAGE_PREFIX}ors`, keys.ors_api_key);
+      storage.setItem(`${API_KEY_STORAGE_PREFIX}ors`, keys.ors_api_key);
+      otherStorage.removeItem(`${API_KEY_STORAGE_PREFIX}ors`);
     }
     if (keys.routing_engine !== undefined) {
-      localStorage.setItem(`${API_KEY_STORAGE_PREFIX}engine`, keys.routing_engine);
+      storage.setItem(`${API_KEY_STORAGE_PREFIX}engine`, keys.routing_engine);
+      otherStorage.removeItem(`${API_KEY_STORAGE_PREFIX}engine`);
     }
   } catch (error) {
     console.error('Error storing API keys to storage:', error);
   }
 }
 
-// Clear stored API keys
+// Clear all stored API keys
 export function clearStoredApiKeys(): void {
   try {
     localStorage.removeItem(`${API_KEY_STORAGE_PREFIX}gh`);
     localStorage.removeItem(`${API_KEY_STORAGE_PREFIX}ors`);
     localStorage.removeItem(`${API_KEY_STORAGE_PREFIX}engine`);
+    sessionStorage.removeItem(`${API_KEY_STORAGE_PREFIX}gh`);
+    sessionStorage.removeItem(`${API_KEY_STORAGE_PREFIX}ors`);
+    sessionStorage.removeItem(`${API_KEY_STORAGE_PREFIX}engine`);
   } catch (error) {
     console.error('Error clearing API keys from storage:', error);
   }

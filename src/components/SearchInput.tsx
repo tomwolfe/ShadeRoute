@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, MapPin } from 'lucide-react';
-import { searchAddress } from '../services/nominatim';
+import { Search, MapPin, Locate, Loader2 } from 'lucide-react';
+import { searchAddress, reverseGeocode } from '../services/nominatim';
 import type { GeocodeResult } from '../services/nominatim';
 
 interface SearchInputProps {
@@ -14,11 +14,43 @@ export const SearchInput: React.FC<SearchInputProps> = ({ placeholder, onSelect,
   const [query, setQuery] = useState(value);
   const [results, setResults] = useState<GeocodeResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
   const timeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     setQuery(value);
   }, [value]);
+
+  const handleLocateMe = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser');
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const result = await reverseGeocode(latitude, longitude);
+          if (result) {
+            setQuery(result.display_name);
+            onSelect(result);
+          }
+        } catch (error) {
+          console.error('Geolocation reverse geocode error:', error);
+        } finally {
+          setIsLocating(false);
+        }
+      },
+      (error) => {
+        console.error('Geolocation error:', error);
+        setIsLocating(false);
+        alert('Could not get your location');
+      },
+      { enableHighAccuracy: true }
+    );
+  };
 
   useEffect(() => {
     if (query.length < 3 || query === value) {
@@ -52,11 +84,19 @@ export const SearchInput: React.FC<SearchInputProps> = ({ placeholder, onSelect,
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={placeholder}
-          className="w-full bg-gray-800 text-white rounded-lg pl-10 pr-4 py-2 border border-gray-700 focus:outline-none focus:border-blue-500 transition-colors"
+          className="w-full bg-gray-800 text-white rounded-lg pl-10 pr-10 py-2 border border-gray-700 focus:outline-none focus:border-blue-500 transition-colors"
         />
         <div className="absolute left-3 top-2.5 text-gray-500">
           <Search size={18} />
         </div>
+        <button
+          onClick={handleLocateMe}
+          disabled={isLocating}
+          className="absolute right-3 top-2.5 text-gray-500 hover:text-blue-500 transition-colors disabled:opacity-50"
+          title="Locate Me"
+        >
+          {isLocating ? <Loader2 size={18} className="animate-spin" /> : <Locate size={18} />}
+        </button>
       </div>
 
       {isOpen && results.length > 0 && (

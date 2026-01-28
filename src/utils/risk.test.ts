@@ -43,14 +43,26 @@ describe('risk utilities', () => {
 
   describe('calculateStealthScore', () => {
     it('should return 100 for 0 cameras', () => {
-      expect(calculateStealthScore(0)).toBe(100);
+      expect(calculateStealthScore(0, 1000)).toBe(100);
     });
 
-    it('should decrease score as camera count increases', () => {
-      expect(calculateStealthScore(1)).toBe(95);
-      expect(calculateStealthScore(10)).toBe(50);
-      expect(calculateStealthScore(20)).toBe(0);
-      expect(calculateStealthScore(100)).toBe(0);
+    it('should return 100 if distance is 0', () => {
+      expect(calculateStealthScore(5, 0)).toBe(100);
+    });
+
+    it('should calculate score based on density', () => {
+      // 1 camera in 1km = 10 cameras/km -> 90 score
+      expect(calculateStealthScore(1, 1000)).toBe(90);
+      // 10 cameras in 1km = 100 cameras/km -> 0 score
+      expect(calculateStealthScore(10, 1000)).toBe(0);
+      // 1 camera in 10km = 0.1 cameras/km -> 99 score
+      expect(calculateStealthScore(1, 10000)).toBe(99);
+      // 5 cameras in 5km = 1 camera/km -> 90 score
+      expect(calculateStealthScore(5, 5000)).toBe(90);
+    });
+
+    it('should not return less than 0', () => {
+      expect(calculateStealthScore(100, 1000)).toBe(0);
     });
   });
 });
