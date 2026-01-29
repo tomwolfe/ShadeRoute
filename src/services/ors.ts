@@ -39,12 +39,13 @@ export interface ORSResponse {
 export type StealthMode = 'speed' | 'balanced' | 'stealth';
 
 export async function getORSRoute(
-  start: [number, number],
-  end: [number, number],
+  start: [number, number], // [lat, lon]
+  end: [number, number],   // [lat, lon]
   cameras: Camera[],
   mode: StealthMode,
   apiKey: string
 ): Promise<ORSRouteResult> {
+  // ORS expects [[lon, lat], [lon, lat]]
   const coordinates = [
     [start[1], start[0]],
     [end[1], end[0]]
@@ -64,14 +65,18 @@ export async function getORSRoute(
     
     avoidPolygons.coordinates = relevantCameras.map(cam => {
       const isALPR = 
-        cam.tags['surveillance:type']?.toLowerCase().includes('alpr') ||
-        cam.tags['surveillance:type']?.toLowerCase().includes('lpr') ||
-        cam.tags['camera:type']?.toLowerCase().includes('alpr') ||
-        cam.tags['camera:type']?.toLowerCase().includes('lpr');
+        (cam.tags && 'surveillance:type' in cam.tags && cam.tags['surveillance:type']?.toLowerCase().includes('alpr')) ||
+        (cam.tags && 'surveillance:type' in cam.tags && cam.tags['surveillance:type']?.toLowerCase().includes('lpr')) ||
+        (cam.tags && 'camera:type' in cam.tags && cam.tags['camera:type']?.toLowerCase().includes('alpr')) ||
+        (cam.tags && 'camera:type' in cam.tags && cam.tags['camera:type']?.toLowerCase().includes('lpr')) ||
+        (cam.tags && 'surveillance:kind' in cam.tags && cam.tags['surveillance:kind']?.toLowerCase().includes('alpr')) ||
+        (cam.tags && 'surveillance:kind' in cam.tags && cam.tags['surveillance:kind']?.toLowerCase().includes('lpr'));
 
       // Radius: 0.0012 (~130m) for ALPR, 0.0006 (~65m) for others
       const offset = isALPR ? 0.0012 : 0.0006;
 
+      // MultiPolygon coordinates: Array of Polygons, each Polygon is an array of Rings
+      // Each Ring is an array of [lon, lat]
       return [[
         [cam.lon - offset, cam.lat - offset],
         [cam.lon + offset, cam.lat - offset],

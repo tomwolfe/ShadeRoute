@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { getRoute } from '../services/graphhopper';
-import { getORSRoute } from '../services/openrouteservice';
+import { getORSRoute } from '../services/ors';
 import { countCamerasNearRoute, calculateStealthScore } from '../utils/risk';
 import type { Camera } from '../services/overpass';
 import type { StealthMode } from '../services/graphhopper';
