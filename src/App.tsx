@@ -27,7 +27,7 @@ const App: React.FC = () => {
         setCameraLoading(false);
       }
     };
-    const timer = setTimeout(autoFetch, 500);
+    const timer = setTimeout(autoFetch, 800);
     return () => clearTimeout(timer);
   }, [start, end, getCamerasForRoute, setCameraLoading]);
 

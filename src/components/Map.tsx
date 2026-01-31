@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, CircleMarker, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, CircleMarker, useMapEvents, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import type { Camera } from '../services/overpass';
 
@@ -113,29 +113,52 @@ export const Map: React.FC<MapProps> = ({
           endPoint={endPoint} 
         />
         
-        {cameras.map((camera) => (
-          <CircleMarker 
-            key={camera.id} 
-            center={[camera.lat, camera.lon]} 
-            radius={4}
-            pathOptions={{
-              fillColor: '#ef4444',
-              fillOpacity: 0.8,
-              color: '#ffffff',
-              weight: 1,
-            }}
-          >
-            <Popup>
-              <div className="text-xs text-gray-900">
-                <p className="font-bold">Surveillance Camera</p>
-                {camera.tags['surveillance:type'] && <p>Type: {camera.tags['surveillance:type']}</p>}
-                {camera.tags.brand && <p>Brand: {camera.tags.brand}</p>}
-                {camera.tags.name && <p>Name: {camera.tags.name}</p>}
-                <p className="mt-1 text-[10px] text-gray-500">ID: {camera.id}</p>
-              </div>
-            </Popup>
-          </CircleMarker>
-        ))}
+        {cameras.map((camera) => {
+          const isALPR = 
+            camera.tags['surveillance:type']?.toLowerCase().includes('alpr') ||
+            camera.tags['surveillance:type']?.toLowerCase().includes('lpr') ||
+            camera.tags['camera:type']?.toLowerCase().includes('alpr') ||
+            camera.tags['camera:type']?.toLowerCase().includes('lpr');
+          
+          const radius = isALPR ? 130 : 65;
+
+          return (
+            <React.Fragment key={camera.id}>
+              <Circle
+                center={[camera.lat, camera.lon]}
+                radius={radius}
+                pathOptions={{
+                  fillColor: '#ef4444',
+                  fillOpacity: 0.1,
+                  color: '#ef4444',
+                  weight: 1,
+                }}
+              />
+              <CircleMarker 
+                center={[camera.lat, camera.lon]} 
+                radius={4}
+                pathOptions={{
+                  fillColor: '#ef4444',
+                  fillOpacity: 0.8,
+                  color: '#ffffff',
+                  weight: 1,
+                }}
+              >
+                <Popup>
+                  <div className="text-xs text-gray-900">
+                    <p className="font-bold">Surveillance Camera</p>
+                    {isALPR && <p className="text-red-600 font-semibold italic">ALPR/LPR Enabled</p>}
+                    {camera.tags['surveillance:type'] && <p>Type: {camera.tags['surveillance:type']}</p>}
+                    {camera.tags.brand && <p>Brand: {camera.tags.brand}</p>}
+                    {camera.tags.name && <p>Name: {camera.tags.name}</p>}
+                    <p className="mt-1 text-[10px] text-gray-500">ID: {camera.id}</p>
+                    <p className="text-[10px] text-gray-400">Avoidance Radius: {radius}m</p>
+                  </div>
+                </Popup>
+              </CircleMarker>
+            </React.Fragment>
+          );
+        })}
 
         {startPoint && (
           <Marker position={startPoint}>
