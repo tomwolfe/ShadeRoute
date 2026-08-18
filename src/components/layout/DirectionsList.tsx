@@ -2,13 +2,13 @@ import React from 'react';
 import { useNavigation } from '../../context/NavigationContext';
 import { MapPin, Navigation, Clock, Ruler } from 'lucide-react';
 
-function renderInstruction(text: string): JSX.Element {
+function renderInstruction(text: string): React.ReactElement {
   const parts = text.split(/<\/b>/);
   if (parts.length === 1 || text.indexOf('<b>') === -1) {
     return <p className="text-sm text-gray-200 leading-snug">{text}</p>;
   }
 
-  const elements: JSX.Element[] = [];
+  const elements: React.ReactElement[] = [];
   let i = 0;
   while (i < parts.length) {
     const before = parts[i];

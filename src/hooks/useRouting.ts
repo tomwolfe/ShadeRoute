@@ -65,15 +65,17 @@ export const useRouting = () => {
 
       // Post-route verification: if stealth mode and cameras found near route, retry once
       if (mode === 'stealth' && stealthRes.cameraCount > 0) {
-        // Retry once with stricter settings
         if (engine === 'graphhopper') {
-          // GraphHopper: retry with stealth mode (already uses tighter penalties for ALPR)
-          const rerouted = await fetchRoute('stealth');
+          await fetchRoute('stealth');
           console.warn('Cameras found near stealth route; consider reviewing camera clustering.');
         } else if (engine === 'openrouteservice') {
-          // ORS: retry with additional avoid_features (highways + tollways)
-          const rerouted = await getORSRoute([sLat, sLon], [eLat, eLon], cameras, 'stealth', orsApiKey);
-          // Delete cached route and set the new one
+          const orsResult = await getORSRoute([sLat, sLon], [eLat, eLon], cameras, 'stealth', orsApiKey);
+          const camCount = countCamerasNearRoute(orsResult.coordinates, cameras);
+          const rerouted = {
+            ...orsResult,
+            cameraCount: camCount,
+            stealthScore: calculateStealthScore(camCount, orsResult.distance)
+          };
           setStealthRoute(rerouted);
           setFastestRoute(fastestRes);
           setLoading(false);

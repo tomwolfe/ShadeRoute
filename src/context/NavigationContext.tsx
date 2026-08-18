@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { GeocodeResult } from '../services/nominatim';
-import { reverseGeocode } from '../services/nominatim';
+
 import type { StealthMode } from '../services/graphhopper';
 import { getStoredApiKeys, storeApiKeys } from '../services/apiKeys';
 
@@ -40,6 +40,8 @@ interface NavigationContextType {
   setOrsApiKey: (key: string) => void;
   sessionOnlyKeys: boolean;
   setSessionOnlyKeys: (val: boolean) => void;
+  ghBaseUrl: string;
+  setGhBaseUrl: (url: string) => void;
   sidebarOpen: boolean;
   setSidebarOpen: (val: boolean) => void;
   showFastestRoute: boolean;

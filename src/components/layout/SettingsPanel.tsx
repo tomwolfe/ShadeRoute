@@ -13,7 +13,8 @@ export const SettingsPanel: React.FC = () => {
   const { 
     engine, setEngine, ghApiKey, setGhApiKey, orsApiKey, setOrsApiKey,
     sessionOnlyKeys, setSessionOnlyKeys, mode, setMode,
-    showFastestRoute, setShowFastestRoute, cameraLoading
+    showFastestRoute, setShowFastestRoute, cameraLoading,
+    ghBaseUrl, setGhBaseUrl
   } = useNavigation();
 
   return (
