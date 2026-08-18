@@ -1,5 +1,7 @@
 import axios from 'axios';
 import type { Camera } from './overpass';
+import { circlePolygon } from '../utils/geo';
+import { clusterCameras } from '../utils/cluster';
 
 export interface RoutePath {
   distance: number;
@@ -66,16 +68,15 @@ export async function getRoute(
   end: [number, number],
   cameras: Camera[],
   mode: StealthMode,
-  apiKey: string
+  apiKey: string,
+  ghBaseUrl: string = 'https://graphhopper.com/api/1'
 ): Promise<RouteResponse> {
   const features: GraphHopperFeature[] = [];
   const priorityStatements: GraphHopperPriorityStatement[] = [];
 
-  // Limit cameras to avoid huge request bodies
-  const relevantCameras = cameras.slice(0, 100);
-
-  if (mode !== 'speed' && relevantCameras.length > 0) {
-    relevantCameras.forEach((cam, index) => {
+  if (mode !== 'speed' && cameras.length > 0) {
+    const clusteredCameras = clusterCameras(cameras);
+    clusteredCameras.forEach((cam, index) => {
       const areaId = `camera_${index}`;
       
       const isALPR = 
@@ -84,26 +85,20 @@ export async function getRoute(
         cam.tags['camera:type']?.toLowerCase().includes('alpr') ||
         cam.tags['camera:type']?.toLowerCase().includes('lpr');
 
-      // Radius: 0.0012 (~130m) for ALPR, 0.0006 (~65m) for others
-      const offset = isALPR ? 0.0012 : 0.0006;
-      // Multiplier: 0.01 for ALPR, 0.5 for others
-      const multiplier = isALPR ? 0.01 : 0.5;
+      const radius = isALPR ? 130 : 65;
+      const polygon = circlePolygon(cam.lat, cam.lon, radius);
 
       features.push({
         type: 'Feature',
         id: areaId,
         geometry: {
           type: 'Polygon',
-          coordinates: [[
-            [cam.lon - offset, cam.lat - offset],
-            [cam.lon + offset, cam.lat - offset],
-            [cam.lon + offset, cam.lat + offset],
-            [cam.lon - offset, cam.lat + offset],
-            [cam.lon - offset, cam.lat - offset]
-          ]]
+          coordinates: [polygon]
         },
         properties: {}
       });
+
+      const multiplier = isALPR ? 0.01 : 0.5;
 
       priorityStatements.push({
         if: `in_${areaId}`,
@@ -162,8 +157,13 @@ export async function getRoute(
   }
 
   const response = await axios.post(
-    `https://graphhopper.com/api/1/route?key=${apiKey}`,
-    requestBody
+    `${ghBaseUrl}`,
+    requestBody,
+    {
+      headers: {
+        'X-API-Key': apiKey
+      }
+    }
   );
 
   return response.data;

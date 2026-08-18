@@ -2,6 +2,33 @@ import React from 'react';
 import { useNavigation } from '../../context/NavigationContext';
 import { MapPin, Navigation, Clock, Ruler } from 'lucide-react';
 
+function renderInstruction(text: string): JSX.Element {
+  const parts = text.split(/<\/b>/);
+  if (parts.length === 1 || text.indexOf('<b>') === -1) {
+    return <p className="text-sm text-gray-200 leading-snug">{text}</p>;
+  }
+
+  const elements: JSX.Element[] = [];
+  let i = 0;
+  while (i < parts.length) {
+    const before = parts[i];
+    if (before.trim()) {
+      elements.push(<span key={i} className="text-sm text-gray-200 leading-snug">{before}</span>);
+    }
+    i++;
+
+    if (i < parts.length) {
+      const after = parts[i];
+      // Check if the original text had <b> before this part
+      // The split on </b> means odd-indexed parts follow a <b> tag
+      elements.push(<b key={i} className="text-sm text-blue-500">{after}</b>);
+    }
+    i++;
+  }
+
+  return <p className="text-sm text-gray-200 leading-snug">{elements}</p>;
+}
+
 export const DirectionsList: React.FC = () => {
   const { stealthRoute } = useNavigation();
 
@@ -53,7 +80,7 @@ export const DirectionsList: React.FC = () => {
             </div>
             
             <div className="flex-1">
-              <p className="text-sm text-gray-200 leading-snug" dangerouslySetInnerHTML={{ __html: step.text }} />
+              {renderInstruction(step.text)}
               <div className="flex gap-2 mt-1">
                 <span className="text-[10px] text-gray-500 font-mono">
                   {formatDistance(step.distance)}

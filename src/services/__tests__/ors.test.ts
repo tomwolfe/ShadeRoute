@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getORSRoute } from '../ors';
 import axios from 'axios';
 import type { Camera } from '../overpass';
+import { calculateDistance } from '../../utils';
 
 vi.mock('axios');
 const mockedAxios = vi.mocked(axios);
@@ -15,7 +16,7 @@ describe('ORS service', () => {
   const mockEnd: [number, number] = [37.7833, -122.4167];   // [lat, lon]
   const mockApiKey = 'test-api-key';
 
-  it('should apply 0.0012 offset for ALPR cameras', async () => {
+  it('should generate a closed ring with 17 points (16 steps + closure)', async () => {
     const alprCamera: Camera = {
       id: 1,
       lat: 37.775,
@@ -39,14 +40,13 @@ describe('ORS service', () => {
     
     // Check first camera's polygon
     const polygon = avoidPolygons.coordinates[0][0];
-    const offset = 0.0012;
     
-    // Top-right point: [lon + offset, lat + offset]
-    expect(polygon[2][0]).toBeCloseTo(alprCamera.lon + offset);
-    expect(polygon[2][1]).toBeCloseTo(alprCamera.lat + offset);
+    // Circle polygon with default 16 steps produces 17 points (closed ring)
+    expect(polygon).toHaveLength(17);
+    expect(polygon[0]).toEqual(polygon[16]); // ring closes
   });
 
-  it('should apply 0.0006 offset for standard cameras', async () => {
+  it('should generate circle points at the specified radius from center', async () => {
     const standardCamera: Camera = {
       id: 2,
       lat: 37.775,
@@ -69,10 +69,20 @@ describe('ORS service', () => {
     const avoidPolygons = callBody.options.avoid_polygons;
     
     const polygon = avoidPolygons.coordinates[0][0];
-    const offset = 0.0006;
+    const centerLat = standardCamera.lat;
+    const centerLon = standardCamera.lon;
     
-    expect(polygon[2][0]).toBeCloseTo(standardCamera.lon + offset);
-    expect(polygon[2][1]).toBeCloseTo(standardCamera.lat + offset);
+// Check a point on the ring is approximately the radius distance from center
+    // Use point at index 4 (90° from starting angle)
+    // polygon is [lon, lat] from circlePolygon, calculateDistance expects (lat, lon)
+    const testLon = polygon[4][0];
+    const testLat = polygon[4][1];
+    const dist = calculateDistance(centerLat, centerLon, testLat, testLon);
+    
+    // calculateDistance returns km, convert to meters
+    const distMeters = dist * 1000;
+    // 65m radius should have distance within ~5m tolerance
+    expect(distMeters).toBeCloseTo(65, -1); // within ~5m
   });
 
   it('should send coordinates in [longitude, latitude] format', async () => {
@@ -190,7 +200,7 @@ describe('ORS service', () => {
     expect(result.instructions).toHaveLength(2);
     expect(result.instructions[0].text).toBe('Go straight');
     expect(result.instructions[1].text).toBe('Turn left');
-    expect(result.time).toBe(60000); // 60s * 1000
+    expect(result.time).toBe(60000);
   });
 
   it('should handle stealth mode and avoid highways', async () => {

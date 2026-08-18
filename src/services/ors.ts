@@ -1,5 +1,7 @@
 import axios from 'axios';
 import type { Camera } from './overpass';
+import { circlePolygon } from '../utils/geo';
+import { clusterCameras } from '../utils/cluster';
 
 export interface ORSInstruction {
   text: string;
@@ -60,10 +62,8 @@ export async function getORSRoute(
   };
 
   if (mode !== 'speed' && cameras.length > 0) {
-    // Limit cameras to avoid huge request bodies
-    const relevantCameras = cameras.slice(0, 50);
-    
-    avoidPolygons.coordinates = relevantCameras.map(cam => {
+    const clusteredCameras = clusterCameras(cameras);
+    avoidPolygons.coordinates = clusteredCameras.map(cam => {
       const isALPR = 
         (cam.tags && 'surveillance:type' in cam.tags && cam.tags['surveillance:type']?.toLowerCase().includes('alpr')) ||
         (cam.tags && 'surveillance:type' in cam.tags && cam.tags['surveillance:type']?.toLowerCase().includes('lpr')) ||
@@ -72,18 +72,12 @@ export async function getORSRoute(
         (cam.tags && 'surveillance:kind' in cam.tags && cam.tags['surveillance:kind']?.toLowerCase().includes('alpr')) ||
         (cam.tags && 'surveillance:kind' in cam.tags && cam.tags['surveillance:kind']?.toLowerCase().includes('lpr'));
 
-      // Radius: 0.0012 (~130m) for ALPR, 0.0006 (~65m) for others
-      const offset = isALPR ? 0.0012 : 0.0006;
+      const radius = isALPR ? 130 : 65;
+      const polygon = circlePolygon(cam.lat, cam.lon, radius);
 
       // MultiPolygon coordinates: Array of Polygons, each Polygon is an array of Rings
       // Each Ring is an array of [lon, lat]
-      return [[
-        [cam.lon - offset, cam.lat - offset],
-        [cam.lon + offset, cam.lat - offset],
-        [cam.lon + offset, cam.lat + offset],
-        [cam.lon - offset, cam.lat + offset],
-        [cam.lon - offset, cam.lat - offset]
-      ]];
+      return [polygon];
     });
   }
 

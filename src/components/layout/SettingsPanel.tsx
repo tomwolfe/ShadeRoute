@@ -57,6 +57,15 @@ export const SettingsPanel: React.FC = () => {
           placeholder="Enter API Key..."
           className="w-full bg-gray-900 text-white rounded-lg px-3 py-2 border border-gray-700 text-xs focus:border-blue-500 outline-none"
         />
+        {engine === 'graphhopper' && (
+          <input
+            type="text"
+            value={ghBaseUrl}
+            onChange={(e) => setGhBaseUrl(e.target.value)}
+            placeholder="Custom GH server URL (optional)"
+            className="w-full bg-gray-900 text-white rounded-lg px-3 py-2 border border-gray-700 text-xs focus:border-blue-500 outline-none mt-2"
+          />
+        )}
       </div>
 
       <div className="space-y-3">

@@ -66,45 +66,41 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   
   const [ghApiKey, setGhApiKey] = useState(storedKeys.gh_api_key || '');
   const [orsApiKey, setOrsApiKey] = useState(storedKeys.ors_api_key || '');
+  const [ghBaseUrl, setGhBaseUrl] = useState(storedKeys.gh_base_url || 'https://graphhopper.com/api/1');
 
-  // ... (URL state sync)
+  // Persist start/end to sessionStorage instead of URL
   useEffect(() => {
-    const loadFromUrl = async () => {
-      const params = new URLSearchParams(window.location.search);
-      const startParam = params.get('start');
-      const endParam = params.get('end');
-      
-      if (startParam) {
-        const [lat, lon] = startParam.split(',').map(Number);
-        if (!isNaN(lat) && !isNaN(lon)) {
-          const res = await reverseGeocode(lat, lon);
-          if (res) setStart(res);
-        }
-      }
-      if (endParam) {
-        const [lat, lon] = endParam.split(',').map(Number);
-        if (!isNaN(lat) && !isNaN(lon)) {
-          const res = await reverseGeocode(lat, lon);
-          if (res) setEnd(res);
-        }
-      }
-    };
-    loadFromUrl();
-  }, []);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (start) params.set('start', `${start.lat},${start.lon}`);
-    else params.delete('start');
-    if (end) params.set('end', `${end.lat},${end.lon}`);
-    else params.delete('end');
-    
-    const newRelativePathQuery = window.location.pathname + '?' + params.toString();
-    window.history.pushState(null, '', newRelativePathQuery);
+    if (start) {
+      sessionStorage.setItem('shaderoute_start', JSON.stringify(start));
+    } else {
+      sessionStorage.removeItem('shaderoute_start');
+    }
+    if (end) {
+      sessionStorage.setItem('shaderoute_end', JSON.stringify(end));
+    } else {
+      sessionStorage.removeItem('shaderoute_end');
+    }
   }, [start, end]);
+
+  // Load start/end from sessionStorage on mount
+  useEffect(() => {
+    const storedStart = sessionStorage.getItem('shaderoute_start');
+    const storedEnd = sessionStorage.getItem('shaderoute_end');
+    
+    if (storedStart) {
+      const parsedStart = JSON.parse(storedStart);
+      setStart(parsedStart);
+    }
+    if (storedEnd) {
+      const parsedEnd = JSON.parse(storedEnd);
+      setEnd(parsedEnd);
+    }
+  }, []);
 
   const clearAllData = useCallback(() => {
     localStorage.clear();
+    sessionStorage.removeItem('shaderoute_start');
+    sessionStorage.removeItem('shaderoute_end');
     setStart(null);
     setEnd(null);
     setStealthRoute(null);
@@ -119,9 +115,10 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     storeApiKeys({
       gh_api_key: ghApiKey,
       ors_api_key: orsApiKey,
-      routing_engine: engine
+      routing_engine: engine,
+      gh_base_url: ghBaseUrl
     }, !sessionOnlyKeys);
-  }, [ghApiKey, orsApiKey, engine, sessionOnlyKeys]);
+  }, [ghApiKey, orsApiKey, engine, ghBaseUrl, sessionOnlyKeys]);
 
   return (
     <NavigationContext.Provider value={{
@@ -136,6 +133,7 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       error, setError,
       ghApiKey, setGhApiKey,
       orsApiKey, setOrsApiKey,
+      ghBaseUrl, setGhBaseUrl,
       sessionOnlyKeys, setSessionOnlyKeys,
       sidebarOpen, setSidebarOpen,
       showFastestRoute, setShowFastestRoute,

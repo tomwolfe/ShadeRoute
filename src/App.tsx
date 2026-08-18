@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
 import { Shield, ShieldAlert, Menu, X } from 'lucide-react';
-import { Analytics } from '@vercel/analytics/react';
 import { Map } from './components/Map';
 import { Sidebar } from './components/layout/Sidebar';
 import { reverseGeocode } from './services/nominatim';
@@ -41,7 +40,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen bg-gray-950 text-white overflow-hidden relative font-sans">
-      <Analytics />
       
       {error && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-red-600 text-white px-4 py-2 rounded-lg shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4">
